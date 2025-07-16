@@ -1,0 +1,548 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		7CFC10FC2E2833F400D22806 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7CFC10E32E2833F100D22806 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7CFC10EA2E2833F100D22806;
+			remoteInfo = DonkTool;
+		};
+		7CFC11062E2833F400D22806 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7CFC10E32E2833F100D22806 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7CFC10EA2E2833F100D22806;
+			remoteInfo = DonkTool;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		7CFC10EB2E2833F100D22806 /* DonkTool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DonkTool.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7CFC10FB2E2833F400D22806 /* DonkToolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DonkToolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7CFC11052E2833F400D22806 /* DonkToolUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DonkToolUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7CFC10ED2E2833F100D22806 /* DonkTool */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DonkTool;
+			sourceTree = "<group>";
+		};
+		7CFC10FE2E2833F400D22806 /* DonkToolTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DonkToolTests;
+			sourceTree = "<group>";
+		};
+		7CFC11082E2833F400D22806 /* DonkToolUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DonkToolUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7CFC10E82E2833F100D22806 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC10F82E2833F400D22806 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC11022E2833F400D22806 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7CFC10E22E2833F100D22806 = {
+			isa = PBXGroup;
+			children = (
+				7CFC10ED2E2833F100D22806 /* DonkTool */,
+				7CFC10FE2E2833F400D22806 /* DonkToolTests */,
+				7CFC11082E2833F400D22806 /* DonkToolUITests */,
+				7CFC10EC2E2833F100D22806 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7CFC10EC2E2833F100D22806 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7CFC10EB2E2833F100D22806 /* DonkTool.app */,
+				7CFC10FB2E2833F400D22806 /* DonkToolTests.xctest */,
+				7CFC11052E2833F400D22806 /* DonkToolUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7CFC10EA2E2833F100D22806 /* DonkTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7CFC110F2E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkTool" */;
+			buildPhases = (
+				7CFC10E72E2833F100D22806 /* Sources */,
+				7CFC10E82E2833F100D22806 /* Frameworks */,
+				7CFC10E92E2833F100D22806 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7CFC10ED2E2833F100D22806 /* DonkTool */,
+			);
+			name = DonkTool;
+			packageProductDependencies = (
+			);
+			productName = DonkTool;
+			productReference = 7CFC10EB2E2833F100D22806 /* DonkTool.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7CFC10FA2E2833F400D22806 /* DonkToolTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7CFC11122E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkToolTests" */;
+			buildPhases = (
+				7CFC10F72E2833F400D22806 /* Sources */,
+				7CFC10F82E2833F400D22806 /* Frameworks */,
+				7CFC10F92E2833F400D22806 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7CFC10FD2E2833F400D22806 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7CFC10FE2E2833F400D22806 /* DonkToolTests */,
+			);
+			name = DonkToolTests;
+			packageProductDependencies = (
+			);
+			productName = DonkToolTests;
+			productReference = 7CFC10FB2E2833F400D22806 /* DonkToolTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7CFC11042E2833F400D22806 /* DonkToolUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7CFC11152E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkToolUITests" */;
+			buildPhases = (
+				7CFC11012E2833F400D22806 /* Sources */,
+				7CFC11022E2833F400D22806 /* Frameworks */,
+				7CFC11032E2833F400D22806 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7CFC11072E2833F400D22806 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7CFC11082E2833F400D22806 /* DonkToolUITests */,
+			);
+			name = DonkToolUITests;
+			packageProductDependencies = (
+			);
+			productName = DonkToolUITests;
+			productReference = 7CFC11052E2833F400D22806 /* DonkToolUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7CFC10E32E2833F100D22806 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					7CFC10EA2E2833F100D22806 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					7CFC10FA2E2833F400D22806 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = 7CFC10EA2E2833F100D22806;
+					};
+					7CFC11042E2833F400D22806 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = 7CFC10EA2E2833F100D22806;
+					};
+				};
+			};
+			buildConfigurationList = 7CFC10E62E2833F100D22806 /* Build configuration list for PBXProject "DonkTool" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7CFC10E22E2833F100D22806;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7CFC10EC2E2833F100D22806 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7CFC10EA2E2833F100D22806 /* DonkTool */,
+				7CFC10FA2E2833F400D22806 /* DonkToolTests */,
+				7CFC11042E2833F400D22806 /* DonkToolUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7CFC10E92E2833F100D22806 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC10F92E2833F400D22806 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC11032E2833F400D22806 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7CFC10E72E2833F100D22806 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC10F72E2833F400D22806 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CFC11012E2833F400D22806 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7CFC10FD2E2833F400D22806 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7CFC10EA2E2833F100D22806 /* DonkTool */;
+			targetProxy = 7CFC10FC2E2833F400D22806 /* PBXContainerItemProxy */;
+		};
+		7CFC11072E2833F400D22806 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7CFC10EA2E2833F100D22806 /* DonkTool */;
+			targetProxy = 7CFC11062E2833F400D22806 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7CFC110D2E2833F400D22806 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7CFC110E2E2833F400D22806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		7CFC11102E2833F400D22806 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DonkTool/DonkTool.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkTool;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7CFC11112E2833F400D22806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DonkTool/DonkTool.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkTool;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		7CFC11132E2833F400D22806 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkToolTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DonkTool.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DonkTool";
+			};
+			name = Debug;
+		};
+		7CFC11142E2833F400D22806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkToolTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DonkTool.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DonkTool";
+			};
+			name = Release;
+		};
+		7CFC11162E2833F400D22806 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkToolUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DonkTool;
+			};
+			name = Debug;
+		};
+		7CFC11172E2833F400D22806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PadraigTools.DonkToolUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DonkTool;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7CFC10E62E2833F100D22806 /* Build configuration list for PBXProject "DonkTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFC110D2E2833F400D22806 /* Debug */,
+				7CFC110E2E2833F400D22806 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7CFC110F2E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFC11102E2833F400D22806 /* Debug */,
+				7CFC11112E2833F400D22806 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7CFC11122E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkToolTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFC11132E2833F400D22806 /* Debug */,
+				7CFC11142E2833F400D22806 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7CFC11152E2833F400D22806 /* Build configuration list for PBXNativeTarget "DonkToolUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFC11162E2833F400D22806 /* Debug */,
+				7CFC11172E2833F400D22806 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7CFC10E32E2833F100D22806 /* Project object */;
+}
