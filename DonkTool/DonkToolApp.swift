@@ -2,31 +2,37 @@
 //  DonkToolApp.swift
 //  DonkTool
 //
-//  Created by Padraig Marks on 7/16/25.
+//  Created by DonkTool Development Team
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct DonkToolApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
+    @StateObject private var appState = AppState()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(appState)
+                .onAppear {
+                    showLegalDisclaimer()
+                }
         }
-        .modelContainer(sharedModelContainer)
+        .windowResizability(.contentSize)
+        
+        #if os(macOS)
+        Settings {
+            SettingsView()
+                .environmentObject(appState)
+        }
+        #endif
+    }
+    
+    private func showLegalDisclaimer() {
+        // Show legal disclaimer on first launch
+        if !UserDefaults.standard.bool(forKey: "legal_disclaimer_accepted") {
+            // TODO: Implement legal disclaimer view
+        }
     }
 }

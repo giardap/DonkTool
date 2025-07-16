@@ -2,58 +2,73 @@
 //  ContentView.swift
 //  DonkTool
 //
-//  Created by Padraig Marks on 7/16/25.
+//  Main application interface
 //
 
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @EnvironmentObject var appState: AppState
+    
     var body: some View {
         NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         } detail: {
-            Text("Select an item")
+            DetailView()
         }
+        .frame(minWidth: 900, minHeight: 600)
     }
+}
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+struct SidebarView: View {
+    @EnvironmentObject var appState: AppState
+    
+    var body: some View {
+        List(AppState.MainTab.allCases, id: \.self, selection: $appState.currentTab) { tab in
+            NavigationLink(value: tab) {
+                Label(tab.title, systemImage: tab.systemImage)
+            }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        .navigationTitle("DonkTool")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: {
+                    // Quick scan action
+                }) {
+                    Image(systemName: "play.circle.fill")
+                }
+                .help("Quick Scan")
             }
         }
     }
 }
 
+struct DetailView: View {
+    @EnvironmentObject var appState: AppState
+    
+    var body: some View {
+        Group {
+            switch appState.currentTab {
+            case .dashboard:
+                DashboardView()
+            case .cveManager:
+                CVEManagerView()
+            case .networkScanner:
+                NetworkScannerView()
+            case .webTesting:
+                WebTestingView()
+            case .reporting:
+                ReportingView()
+            case .settings:
+                SettingsView()
+            }
+        }
+        .navigationTitle(appState.currentTab.title)
+    }
+}
+
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .environmentObject(AppState())
 }
