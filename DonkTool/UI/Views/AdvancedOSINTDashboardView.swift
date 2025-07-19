@@ -20,85 +20,192 @@ struct AdvancedOSINTDashboardView: View {
     @State private var selectedSearchType = OSINTSearchType.domain
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            headerView
-            
-            // Main Content - give it fixed height to prevent overflow
-            VStack {
-                if osint.isGathering {
-                    gatheringProgressView
-                } else {
-                    configurationView
-                }
-            }
-            .frame(maxHeight: osint.findings.isEmpty ? .infinity : 400)
-            
-            // Results Section
-            Divider()
-            
-            if osint.findings.isEmpty {
-                // Empty state
-                VStack(spacing: 16) {
-                    Image(systemName: "magnifyingglass.circle")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    
-                    Text("No Intelligence Gathered")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                    
-                    Text("Configure a target and sources above, then start an investigation to see results here.")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.gray.opacity(0.02))
-            } else {
-                // Results display
-                VStack(alignment: .leading, spacing: 0) {
-                    // Results header
-                    HStack {
-                        Text("Intelligence Results")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                        
-                        Spacer()
-                        
-                        Button("Clear All") {
-                            clearAll()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(4)
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header
+                headerView
+                
+                // Main Configuration Section
+                VStack(spacing: 20) {
+                    if osint.isGathering {
+                        gatheringProgressView
+                    } else {
+                        configurationView
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    
-                    // Summary stats
-                    summaryView
-                    
-                    Divider()
-                    
-                    // Findings list with proper frame
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(osint.findings) { finding in
-                                FindingRowView(finding: finding)
-                                    .padding(.horizontal)
+                }
+                .padding(.horizontal, 24)
+                
+                // Results Section with better spacing
+                if osint.findings.isEmpty {
+                    // Empty state with better spacing
+                    VStack(spacing: 24) {
+                        Spacer(minLength: 40)
+                        
+                        Image(systemName: "magnifyingglass.circle")
+                            .font(.system(size: 64))
+                            .foregroundColor(.secondary)
+                        
+                        VStack(spacing: 12) {
+                            Text("No Intelligence Gathered")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                            
+                            Text("Configure a target and sources above, then start an investigation to see results here.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(4)
+                        }
+                        
+                        Spacer(minLength: 40)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.gray.opacity(0.05))
+                    )
+                    .padding(.horizontal, 24)
+                } else {
+                    // Results summary with improved layout
+                    VStack(spacing: 24) {
+                        // Summary header
+                        VStack(spacing: 16) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.title)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Investigation Complete")
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                    
+                                    Text("\(osint.findings.count) intelligence findings gathered")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                Spacer()
+                            }
+                            
+                            // Statistics grid with better spacing
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 16) {
+                                quickStatItem("Sources", value: Set(osint.findings.map(\.source)).count, color: .blue)
+                                quickStatItem("High Confidence", value: osint.findings.filter { $0.confidence == .high }.count, color: .orange)
+                                quickStatItem("URLs Found", value: osint.findings.filter { $0.content.contains("http") }.count, color: .purple)
+                                quickStatItem("Recent", value: osint.findings.filter { Date().timeIntervalSince($0.timestamp) < 3600 }.count, color: .green)
                             }
                         }
-                        .padding(.vertical, 12)
+                        .padding(24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.green.opacity(0.08))
+                        )
+                        
+                        // Action buttons with better spacing
+                        HStack(spacing: 16) {
+                            Button("View Detailed Results") {
+                                showingResults = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .frame(maxWidth: .infinity)
+                            
+                            Button("Export Data") {
+                                exportQuickResults()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .frame(maxWidth: .infinity)
+                            
+                            Button("Clear All") {
+                                clearAll()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                        }
+                        
+                        // Preview of latest findings with better spacing
+                        if osint.findings.count > 0 {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack {
+                                    Text("Latest Findings Preview")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(osint.findings.count) total")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.gray.opacity(0.2))
+                                        .cornerRadius(6)
+                                }
+                                
+                                VStack(spacing: 12) {
+                                    ForEach(osint.findings.prefix(3)) { finding in
+                                        HStack(spacing: 12) {
+                                            Image(systemName: finding.type.icon)
+                                                .foregroundColor(finding.type.color)
+                                                .font(.body)
+                                                .frame(width: 20)
+                                            
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(finding.type.rawValue)
+                                                    .font(.subheadline)
+                                                    .fontWeight(.medium)
+                                                    .foregroundColor(.primary)
+                                                
+                                                Text(String(finding.content.prefix(80)) + (finding.content.count > 80 ? "..." : ""))
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            // Confidence badge
+                                            Text(finding.confidence.rawValue)
+                                                .font(.caption2)
+                                                .fontWeight(.medium)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(finding.confidence.color.opacity(0.2))
+                                                .foregroundColor(finding.confidence.color)
+                                                .cornerRadius(4)
+                                        }
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.8))
+                                        .cornerRadius(8)
+                                    }
+                                }
+                                
+                                if osint.findings.count > 3 {
+                                    Text("+ \(osint.findings.count - 3) more findings available in detailed view")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                        .italic()
+                                        .padding(.top, 8)
+                                }
+                            }
+                            .padding(20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.gray.opacity(0.05))
+                            )
+                        }
                     }
-                    .frame(minHeight: 300, maxHeight: .infinity)
+                    .padding(.horizontal, 24)
                 }
-                .background(Color.gray.opacity(0.02))
+                
+                Spacer(minLength: 40)
             }
         }
         .sheet(isPresented: $showingSettings) {
@@ -116,35 +223,44 @@ struct AdvancedOSINTDashboardView: View {
     
     private var headerView: some View {
         HStack {
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("OSINT Dashboard")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                 
-                HStack {
+                HStack(spacing: 8) {
                     if osint.isGathering {
                         ProgressView()
-                            .scaleEffect(0.7)
+                            .scaleEffect(0.8)
                     }
                     
                     Text(osint.statusMessage)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
             }
             
             Spacer()
             
-            Button(action: { showingSettings = true }) {
-                Image(systemName: "gear")
+            HStack(spacing: 16) {
+                Button(action: { showingSettings = true }) {
+                    Image(systemName: "gear")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: clearAll) {
+                    Image(systemName: "trash")
+                        .font(.title3)
+                        .foregroundColor(osint.findings.isEmpty ? .gray : .red)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(osint.findings.isEmpty)
             }
-            
-            Button(action: clearAll) {
-                Image(systemName: "trash")
-            }
-            .disabled(osint.findings.isEmpty)
         }
-        .padding()
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
     }
     
     private var gatheringProgressView: some View {
@@ -170,73 +286,109 @@ struct AdvancedOSINTDashboardView: View {
     }
     
     private var configurationView: some View {
-        VStack(spacing: 16) {
-            // Search Type Selection
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 32) {
+            // Search Type Selection with better spacing
+            VStack(alignment: .leading, spacing: 16) {
                 Text("Search Type")
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.semibold)
                 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
                     ForEach(OSINTSearchType.allCases, id: \.self) { searchType in
                         searchTypeToggle(searchType)
                     }
                 }
             }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.05))
+            )
             
-            Divider()
-            
-            // Input Fields
-            VStack(alignment: .leading, spacing: 12) {
+            // Input Fields with better spacing
+            VStack(alignment: .leading, spacing: 20) {
                 Text("Target Information")
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.semibold)
                 
-                switch selectedSearchType {
-                case .domain:
-                    TextField(selectedSearchType.placeholder, text: $target)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                case .username:
-                    TextField(selectedSearchType.placeholder, text: $username)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                case .email:
-                    TextField(selectedSearchType.placeholder, text: $email)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                case .phone:
-                    TextField(selectedSearchType.placeholder, text: $phoneNumber)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                case .person:
-                    TextField(selectedSearchType.placeholder, text: $fullName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                case .company:
-                    TextField(selectedSearchType.placeholder, text: $target)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                VStack(spacing: 12) {
+                    switch selectedSearchType {
+                    case .domain:
+                        TextField(selectedSearchType.placeholder, text: $target)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    case .username:
+                        TextField(selectedSearchType.placeholder, text: $username)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    case .email:
+                        TextField(selectedSearchType.placeholder, text: $email)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    case .phone:
+                        TextField(selectedSearchType.placeholder, text: $phoneNumber)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    case .person:
+                        TextField(selectedSearchType.placeholder, text: $fullName)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    case .company:
+                        TextField(selectedSearchType.placeholder, text: $target)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.body)
+                    }
+                    
+                    Button("Start OSINT Investigation") {
+                        startGathering()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(getCurrentTarget().isEmpty || selectedSources.isEmpty)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
                 }
-                
-                Button("Start OSINT Investigation") {
-                    startGathering()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(getCurrentTarget().isEmpty || selectedSources.isEmpty)
-                .frame(maxWidth: .infinity)
             }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.05))
+            )
             
-            Divider()
-            
+            // Intelligence Sources with better spacing
             sourceSelectionView
         }
-        .padding()
     }
     
     private var sourceSelectionView: some View {
-        VStack(alignment: .leading) {
-            Text("Intelligence Sources")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Text("Intelligence Sources")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Text("\(selectedSources.count) selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+            }
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                 ForEach(OSINTSource.allCases, id: \.self) { source in
                     sourceToggle(source)
                 }
             }
         }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.gray.opacity(0.05))
+        )
     }
     
     private func sourceToggle(_ source: OSINTSource) -> some View {
@@ -247,29 +399,33 @@ struct AdvancedOSINTDashboardView: View {
                 selectedSources.insert(source)
             }
         }) {
-            VStack(spacing: 4) {
+            VStack(spacing: 8) {
                 Image(systemName: source.icon)
-                    .font(.title3)
+                    .font(.title2)
+                    .foregroundColor(selectedSources.contains(source) ? .blue : .secondary)
                 
                 Text(source.rawValue)
-                    .font(.caption2)
+                    .font(.caption)
+                    .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
+                    .foregroundColor(selectedSources.contains(source) ? .primary : .secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(8)
+            .frame(height: 70)
+            .padding(12)
             .background(
-                selectedSources.contains(source) ? 
-                Color.blue.opacity(0.2) : Color.gray.opacity(0.1)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(selectedSources.contains(source) ? Color.blue.opacity(0.15) : Color.white.opacity(0.8))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        selectedSources.contains(source) ? Color.blue : Color.clear,
-                        lineWidth: 2
+                        selectedSources.contains(source) ? Color.blue : Color.gray.opacity(0.3),
+                        lineWidth: selectedSources.contains(source) ? 2 : 1
                     )
             )
-            .cornerRadius(8)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -347,29 +503,33 @@ struct AdvancedOSINTDashboardView: View {
             // Update selected sources based on search type
             updateSourcesForSearchType(searchType)
         }) {
-            VStack(spacing: 4) {
+            VStack(spacing: 8) {
                 Image(systemName: searchType.icon)
-                    .font(.title3)
+                    .font(.title2)
+                    .foregroundColor(selectedSearchType == searchType ? .blue : .secondary)
                 
                 Text(searchType.rawValue)
-                    .font(.caption2)
+                    .font(.caption)
+                    .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
+                    .foregroundColor(selectedSearchType == searchType ? .primary : .secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(8)
+            .frame(height: 70)
+            .padding(12)
             .background(
-                selectedSearchType == searchType ? 
-                Color.blue.opacity(0.2) : Color.gray.opacity(0.1)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(selectedSearchType == searchType ? Color.blue.opacity(0.15) : Color.white.opacity(0.8))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        selectedSearchType == searchType ? Color.blue : Color.clear,
-                        lineWidth: 2
+                        selectedSearchType == searchType ? Color.blue : Color.gray.opacity(0.3),
+                        lineWidth: selectedSearchType == searchType ? 2 : 1
                     )
             )
-            .cornerRadius(8)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -413,6 +573,118 @@ struct AdvancedOSINTDashboardView: View {
     private func clearAll() {
         osint.clearFindings()
     }
+    
+    private func quickStatItem(_ label: String, value: Int, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text("\(value)")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(color)
+            
+            Text(label)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+    
+    private func exportQuickResults() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json, .plainText]
+        panel.nameFieldStringValue = "osint-results-\(Date().formatted(.iso8601.year().month().day()))"
+        
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                // Export logic here - same as in OSINTResultsWindow
+                exportToFile(url: url)
+            }
+        }
+    }
+    
+    private func exportToFile(url: URL) {
+        do {
+            let exportData = ExportData(
+                exportDate: Date(),
+                totalFindings: osint.findings.count,
+                findings: osint.findings.map { finding in
+                    ExportFinding(
+                        type: finding.type.rawValue,
+                        source: finding.source.rawValue,
+                        confidence: finding.confidence.rawValue,
+                        content: finding.content,
+                        metadata: finding.metadata,
+                        timestamp: finding.timestamp
+                    )
+                }
+            )
+            
+            if url.pathExtension == "json" {
+                let jsonData = try JSONEncoder().encode(exportData)
+                try jsonData.write(to: url)
+            } else {
+                let textContent = generateTextReport(exportData)
+                try textContent.write(to: url, atomically: true, encoding: .utf8)
+            }
+        } catch {
+            print("Export failed: \(error)")
+        }
+    }
+    
+    private func generateTextReport(_ data: ExportData) -> String {
+        var report = """
+        OSINT Investigation Results
+        Export Date: \(data.exportDate.formatted(.dateTime))
+        Total Findings: \(data.totalFindings)
+        
+        ================================
+        
+        """
+        
+        for (index, finding) in data.findings.enumerated() {
+            report += """
+            Finding #\(index + 1)
+            Type: \(finding.type)
+            Source: \(finding.source)
+            Confidence: \(finding.confidence)
+            Timestamp: \(finding.timestamp.formatted(.dateTime))
+            
+            Content:
+            \(finding.content)
+            
+            """
+            
+            if !finding.metadata.isEmpty {
+                report += "Additional Details:\n"
+                for (key, value) in finding.metadata {
+                    report += "  \(key): \(value)\n"
+                }
+            }
+            
+            report += "--------------------------------\n\n"
+        }
+        
+        return report
+    }
+}
+
+// MARK: - Export Data Models
+
+struct ExportData: Codable {
+    let exportDate: Date
+    let totalFindings: Int
+    let findings: [ExportFinding]
+}
+
+struct ExportFinding: Codable {
+    let type: String
+    let source: String
+    let confidence: String
+    let content: String
+    let metadata: [String: String]
+    let timestamp: Date
 }
 
 // MARK: - Component Views
