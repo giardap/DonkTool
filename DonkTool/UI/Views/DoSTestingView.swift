@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DoSTestingView: View {
     @Environment(AppState.self) private var appState
+    @ObservedObject private var dosManager = DoSTestManager.shared
     @State private var selectedTarget = ""
     @State private var selectedPort = 80
     @State private var selectedProtocol: NetworkProtocolType = .http
@@ -24,6 +25,7 @@ struct DoSTestingView: View {
     @State private var currentOutput = ""
     @State private var selectedCategory: DoSAttackCategory? = nil
     @State private var searchText = ""
+    @State private var showConsole = false
     
     var body: some View {
         ScrollView {
@@ -46,6 +48,11 @@ struct DoSTestingView: View {
                 // Control Buttons
                 controlButtonsSection
                 
+                // Console Output Section
+                if showConsole || dosManager.isRunning || !dosManager.consoleOutput.isEmpty {
+                    consoleSection
+                }
+                
                 // Results Section
                 if !testResults.isEmpty {
                     resultsSection
@@ -54,6 +61,8 @@ struct DoSTestingView: View {
             .padding(24)
         }
         .navigationTitle("DoS/Stress Testing")
+        .background(Color(NSColor.controlBackgroundColor))
+        .preferredColorScheme(.dark)
         .onAppear {
             // Simple tool status refresh without forcing updates
             if ToolDetection.shared.toolStatus.isEmpty {
@@ -126,7 +135,7 @@ struct DoSTestingView: View {
                 .fontWeight(.semibold)
         }
         .padding(16)
-        .background(Color.red.opacity(0.1))
+        .background(Color.red.opacity(0.15))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -136,9 +145,15 @@ struct DoSTestingView: View {
     
     private var targetConfigurationSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Target Configuration")
-                .font(.headline)
-                .fontWeight(.semibold)
+            HStack {
+                Image(systemName: "target")
+                    .foregroundColor(.blue)
+                    .font(.title3)
+                Text("Target Configuration")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
             
             VStack(spacing: 16) {
                 HStack {
@@ -147,7 +162,9 @@ struct DoSTestingView: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                         TextField("IP Address or Domain", text: $selectedTarget)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .textFieldStyle(.roundedBorder)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(8)
                     }
                     
                     Spacer()
@@ -157,7 +174,9 @@ struct DoSTestingView: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                         TextField("Port", value: $selectedPort, format: .number)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .textFieldStyle(.roundedBorder)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(8)
                             .frame(width: 80)
                     }
                 }
@@ -183,15 +202,21 @@ struct DoSTestingView: View {
             }
         }
         .padding(16)
-        .background(Color.gray.opacity(0.05))
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
         .cornerRadius(12)
     }
     
     private var testConfigurationSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Test Configuration")
-                .font(.headline)
-                .fontWeight(.semibold)
+            HStack {
+                Image(systemName: "gearshape.fill")
+                    .foregroundColor(.green)
+                    .font(.title3)
+                Text("Test Configuration")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
             
             VStack(spacing: 16) {
                 HStack {
@@ -248,13 +273,16 @@ struct DoSTestingView: View {
             }
         }
         .padding(16)
-        .background(Color.gray.opacity(0.05))
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
         .cornerRadius(12)
     }
     
     private var attackSelectionSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
+                Image(systemName: "bolt.fill")
+                    .foregroundColor(.orange)
+                    .font(.title3)
                 Text("Attack Vector Selection")
                     .font(.headline)
                     .fontWeight(.semibold)
@@ -273,7 +301,7 @@ struct DoSTestingView: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.1))
+                    .background(Color.blue.opacity(0.2))
                     .foregroundColor(.blue)
                     .cornerRadius(6)
                 }
@@ -288,7 +316,9 @@ struct DoSTestingView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                 TextField("Search attack vectors...", text: $searchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .textFieldStyle(.roundedBorder)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
             }
             
             // Category Filter - Horizontal scrollable
@@ -307,7 +337,7 @@ struct DoSTestingView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(selectedCategory == nil ? Color.blue : Color.gray.opacity(0.2))
+                        .background(selectedCategory == nil ? Color.blue : Color(NSColor.controlBackgroundColor).opacity(0.6))
                         .foregroundColor(selectedCategory == nil ? .white : .primary)
                         .cornerRadius(8)
                     }
@@ -325,7 +355,7 @@ struct DoSTestingView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(selectedCategory == category ? category.color : Color.gray.opacity(0.2))
+                            .background(selectedCategory == category ? category.color : Color(NSColor.controlBackgroundColor).opacity(0.6))
                             .foregroundColor(selectedCategory == category ? .white : .primary)
                             .cornerRadius(8)
                         }
@@ -349,7 +379,7 @@ struct DoSTestingView: View {
                 }
                 .padding(40)
                 .frame(maxWidth: .infinity)
-                .background(Color.gray.opacity(0.05))
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
                 .cornerRadius(12)
             } else {
                 LazyVGrid(
@@ -373,7 +403,7 @@ struct DoSTestingView: View {
             }
         }
         .padding(16)
-        .background(Color.gray.opacity(0.05))
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
         .cornerRadius(12)
     }
     
@@ -423,7 +453,7 @@ struct DoSTestingView: View {
                         .fontWeight(.medium)
                 }
                 .padding(8)
-                .background(Color.red.opacity(0.1))
+                .background(Color.red.opacity(0.15))
                 .cornerRadius(6)
             } else {
                 HStack {
@@ -435,12 +465,12 @@ struct DoSTestingView: View {
                         .fontWeight(.medium)
                 }
                 .padding(8)
-                .background(Color.green.opacity(0.1))
+                .background(Color.green.opacity(0.15))
                 .cornerRadius(6)
             }
         }
         .padding(16)
-        .background(Color.red.opacity(0.05))
+        .background(Color.red.opacity(0.1))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -484,37 +514,21 @@ struct DoSTestingView: View {
                     }
                 }
                 .padding(12)
-                .background(Color.orange.opacity(0.1))
+                .background(Color.orange.opacity(0.15))
                 .cornerRadius(8)
             }
             
-            HStack(spacing: 16) {
-                Button(action: startDoSTest) {
-                    HStack(spacing: 8) {
-                        if isRunning {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "play.fill")
-                        }
-                        Text(isRunning ? "Testing in Progress..." : "Start DoS Test")
-                            .fontWeight(.semibold)
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: .infinity)
-                    .background(canStartTest && !isRunning ? Color.red : Color.gray)
-                    .cornerRadius(12)
-                }
-                .disabled(!canStartTest || isRunning)
-                
-                if isRunning {
-                    Button(action: stopDoSTest) {
+            VStack(spacing: 12) {
+                HStack(spacing: 16) {
+                    Button(action: startDoSTest) {
                         HStack(spacing: 8) {
-                            Image(systemName: "stop.fill")
-                            Text("Stop Test")
+                            if isRunning {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "play.fill")
+                            }
+                            Text(isRunning ? "Testing in Progress..." : "Start DoS Test")
                                 .fontWeight(.semibold)
                         }
                         .font(.headline)
@@ -522,12 +536,179 @@ struct DoSTestingView: View {
                         .padding(.vertical, 12)
                         .padding(.horizontal, 24)
                         .frame(maxWidth: .infinity)
-                        .background(Color.orange)
+                        .background(canStartTest && !isRunning ? Color.red : Color.gray)
                         .cornerRadius(12)
+                    }
+                    .disabled(!canStartTest || isRunning)
+                    
+                    if isRunning {
+                        Button(action: stopDoSTest) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "stop.fill")
+                                Text("Stop Test")
+                                    .fontWeight(.semibold)
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 24)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.orange)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                
+                // Console and utility buttons
+                HStack(spacing: 12) {
+                    Button(action: {
+                        showConsole.toggle()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: showConsole ? "terminal.fill" : "terminal")
+                            Text(showConsole ? "Hide Console" : "Show Console")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(showConsole ? Color.blue : Color.gray.opacity(0.3))
+                        .foregroundColor(showConsole ? .white : .primary)
+                        .cornerRadius(8)
+                    }
+                    
+                    if !dosManager.consoleOutput.isEmpty {
+                        Button(action: {
+                            dosManager.clearConsole()
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                Text("Clear Console")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.red.opacity(0.2))
+                            .foregroundColor(.red)
+                            .cornerRadius(8)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    if dosManager.isRunning {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Progress: \(Int(dosManager.progress * 100))%")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                if !dosManager.currentCommand.isEmpty {
+                                    Text("Running: \(dosManager.currentTest?.rawValue ?? "Unknown")")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
                     }
                 }
             }
         }
+    }
+    
+    private var consoleSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "terminal.fill")
+                    .foregroundColor(.green)
+                    .font(.title3)
+                Text("Attack Console")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                if dosManager.isRunning {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Live Output")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .fontWeight(.medium)
+                    }
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 12) {
+                if !dosManager.currentCommand.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current Command:")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                        Text(dosManager.currentCommand)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                    }
+                }
+                
+                ScrollView {
+                    ScrollViewReader { proxy in
+                        VStack(alignment: .leading, spacing: 0) {
+                            if dosManager.consoleOutput.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "terminal")
+                                        .font(.system(size: 32))
+                                        .foregroundColor(.secondary)
+                                    Text("Console output will appear here")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Text("Start a DoS test to see real-time attack progress")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(40)
+                            } else {
+                                Text(dosManager.consoleOutput)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .id("consoleBottom")
+                            }
+                        }
+                        .onChange(of: dosManager.consoleOutput) { _, _ in
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                proxy.scrollTo("consoleBottom", anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 300)
+                .background(Color.black.opacity(0.9))
+                .foregroundColor(.green)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                )
+            }
+        }
+        .padding(16)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+        .cornerRadius(12)
     }
     
     private var resultsSection: some View {
@@ -546,7 +727,7 @@ struct DoSTestingView: View {
             .frame(maxHeight: 400)
         }
         .padding(16)
-        .background(Color.gray.opacity(0.05))
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
         .cornerRadius(12)
     }
     
@@ -608,6 +789,7 @@ struct DoSTestingView: View {
     @MainActor
     private func executeDoSTests() async {
         isRunning = true
+        showConsole = true  // Auto-show console when starting tests
         
         for testType in selectedTestTypes {
             let config = DoSTestConfiguration(
@@ -624,7 +806,7 @@ struct DoSTestingView: View {
             
             guard config.isValid else { continue }
             
-            let result = await DoSTestManager.shared.executeTest(config: config)
+            let result = await dosManager.executeTest(config: config)
             testResults.append(result)
         }
         
@@ -723,7 +905,10 @@ struct AttackTypeCard: View {
                 }
             }
             .padding(16)
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.white)
+            .background(
+                isSelected ? Color.blue.opacity(0.2) : 
+                Color(NSColor.controlBackgroundColor).opacity(0.8)
+            )
             .foregroundColor(.primary)
             .cornerRadius(12)
             .overlay(
@@ -734,7 +919,7 @@ struct AttackTypeCard: View {
                         lineWidth: isSelected ? 2 : 1
                     )
             )
-            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
         }
         .disabled(!isInstalled)
         .opacity(isInstalled ? 1.0 : 0.8)
@@ -841,9 +1026,9 @@ struct DoSResultCard: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
         .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
     }
 }
 

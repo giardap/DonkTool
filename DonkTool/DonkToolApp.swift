@@ -15,6 +15,11 @@ struct DonkToolApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(DefaultWindowStyle())
+        .commands {
+            // Remove default menu items that don't apply
         }
     }
 }

