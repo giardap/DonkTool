@@ -109,7 +109,7 @@ DonkTool is a native macOS penetration testing suite built with Swift and SwiftU
 ### **Quick Start**
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/your-org/DonkTool.git
+   git clone https://github.com/giardap/DonkTool.git
    cd DonkTool
    ```
 
