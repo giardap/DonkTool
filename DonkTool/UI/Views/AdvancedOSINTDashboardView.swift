@@ -16,6 +16,7 @@ struct AdvancedOSINTDashboardView: View {
     @State private var fullName = ""
     @State private var selectedSources: Set<OSINTSource> = []
     @State private var showingSettings = false
+    @State private var showingResults = false
     @State private var selectedSearchType = OSINTSearchType.domain
     
     var body: some View {
@@ -23,20 +24,88 @@ struct AdvancedOSINTDashboardView: View {
             // Header
             headerView
             
-            // Main Content
-            if osint.isGathering {
-                gatheringProgressView
-            } else {
-                configurationView
+            // Main Content - give it fixed height to prevent overflow
+            VStack {
+                if osint.isGathering {
+                    gatheringProgressView
+                } else {
+                    configurationView
+                }
             }
+            .frame(maxHeight: osint.findings.isEmpty ? .infinity : 400)
             
+            // Results Section
             Divider()
             
-            // Results
-            resultsView
+            if osint.findings.isEmpty {
+                // Empty state
+                VStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass.circle")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    
+                    Text("No Intelligence Gathered")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    Text("Configure a target and sources above, then start an investigation to see results here.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.gray.opacity(0.02))
+            } else {
+                // Results display
+                VStack(alignment: .leading, spacing: 0) {
+                    // Results header
+                    HStack {
+                        Text("Intelligence Results")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        
+                        Spacer()
+                        
+                        Button("Clear All") {
+                            clearAll()
+                        }
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    
+                    // Summary stats
+                    summaryView
+                    
+                    Divider()
+                    
+                    // Findings list with proper frame
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(osint.findings) { finding in
+                                FindingRowView(finding: finding)
+                                    .padding(.horizontal)
+                            }
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .frame(minHeight: 300, maxHeight: .infinity)
+                }
+                .background(Color.gray.opacity(0.02))
+            }
         }
         .sheet(isPresented: $showingSettings) {
             OSINTAPISettingsView(osint: osint)
+        }
+        .sheet(isPresented: $showingResults) {
+            OSINTResultsWindow(osint: osint)
         }
         .onAppear {
             if selectedSources.isEmpty {
@@ -205,67 +274,58 @@ struct AdvancedOSINTDashboardView: View {
         .buttonStyle(PlainButtonStyle())
     }
     
-    private var resultsView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if osint.findings.isEmpty {
-                emptyStateView
-            } else {
-                findingsView
-            }
-        }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass.circle")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            
-            Text("No Intelligence Gathered")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            
-            Text("Configure a target and sources to begin")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-    }
-    
-    private var findingsView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Summary stats
-            summaryView
-            
-            Divider()
-            
-            // Findings list
-            List {
-                ForEach(osint.findings) { finding in
-                    FindingRowView(finding: finding)
-                }
-            }
-            .listStyle(PlainListStyle())
-        }
-    }
     
     private var summaryView: some View {
-        HStack {
-            statItem("Findings", value: osint.findings.count, color: .blue)
+        VStack(spacing: 8) {
+            HStack {
+                statItem("Total Findings", value: osint.findings.count, color: .blue)
+                
+                Spacer()
+                
+                statItem("Active Sources", value: Set(osint.findings.map(\.source)).count, color: .green)
+                
+                Spacer()
+                
+                statItem("High Confidence", 
+                        value: osint.findings.filter { $0.confidence == .high }.count, 
+                        color: .orange)
+                
+                Spacer()
+                
+                statItem("URLs Found", 
+                        value: osint.findings.filter { $0.content.contains("http") }.count, 
+                        color: .purple)
+            }
             
-            Spacer()
-            
-            statItem("Sources", value: Set(osint.findings.map(\.source)).count, color: .green)
-            
-            Spacer()
-            
-            statItem("High Confidence", 
-                    value: osint.findings.filter { $0.confidence == .high }.count, 
-                    color: .orange)
+            // Additional stats row
+            HStack {
+                statItem("Social Media", 
+                        value: osint.findings.filter { $0.type.rawValue.contains("Social") || $0.source == .socialMedia }.count, 
+                        color: .mint)
+                
+                Spacer()
+                
+                statItem("Emails", 
+                        value: osint.findings.filter { $0.content.contains("@") && $0.content.contains(".") }.count, 
+                        color: .cyan)
+                
+                Spacer()
+                
+                statItem("Recent (1h)", 
+                        value: osint.findings.filter { Date().timeIntervalSince($0.timestamp) < 3600 }.count, 
+                        color: .indigo)
+                
+                Spacer()
+                
+                // Placeholder for balance
+                statItem("", value: 0, color: .clear)
+                    .opacity(0)
+            }
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(8)
+        .padding(.horizontal)
     }
     
     private func statItem(_ label: String, value: Int, color: Color) -> some View {
@@ -362,15 +422,19 @@ struct FindingRowView: View {
     @State private var isExpanded = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header row with type, confidence, and timestamp
             HStack {
-                Image(systemName: finding.type.icon)
-                    .foregroundColor(finding.type.color)
-                    .font(.caption)
-                
-                Text(finding.type.rawValue)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                HStack(spacing: 6) {
+                    Image(systemName: finding.type.icon)
+                        .foregroundColor(finding.type.color)
+                        .font(.title3)
+                    
+                    Text(finding.type.rawValue)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(finding.type.color)
+                }
                 
                 Spacer()
                 
@@ -381,30 +445,64 @@ struct FindingRowView: View {
                     .foregroundColor(.secondary)
             }
             
-            Text(finding.content)
-                .font(.subheadline)
-                .lineLimit(isExpanded ? nil : 2)
-            
-            HStack {
-                sourceBadge
+            // Main content with better formatting
+            VStack(alignment: .leading, spacing: 6) {
+                Text(finding.content)
+                    .font(.body)
+                    .lineLimit(isExpanded ? nil : 3)
+                    .fixedSize(horizontal: false, vertical: true)
                 
-                Spacer()
-                
-                if !finding.metadata.isEmpty {
-                    Button(isExpanded ? "Less" : "More") {
-                        withAnimation {
-                            isExpanded.toggle()
+                // Source and action buttons
+                HStack {
+                    sourceBadge
+                    
+                    Spacer()
+                    
+                    if !finding.metadata.isEmpty || finding.content.count > 150 {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isExpanded.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Text(isExpanded ? "Show Less" : "Show More")
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .font(.caption2)
+                    
+                    // Copy button for URLs and useful data
+                    if finding.content.contains("http") || finding.content.contains("@") {
+                        Button(action: {
+                            copyToClipboard(finding.content)
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
             }
             
+            // Expanded metadata view
             if isExpanded && !finding.metadata.isEmpty {
                 metadataView
             }
         }
-        .padding(.vertical, 4)
+        .padding()
+        .background(Color.white.opacity(0.8))
+        .cornerRadius(8)
+        .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+    }
+    
+    private func copyToClipboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
     
     private var confidenceBadge: some View {
@@ -431,30 +529,79 @@ struct FindingRowView: View {
     }
     
     private var metadataView: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Details")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                
+                Text("Additional Details")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+            }
             
-            ForEach(Array(finding.metadata.keys), id: \.self) { key in
+            LazyVGrid(columns: [
+                GridItem(.flexible(minimum: 80)),
+                GridItem(.flexible(minimum: 120))
+            ], alignment: .leading, spacing: 8) {
+                ForEach(Array(finding.metadata.keys.sorted()), id: \.self) { key in
+                    Group {
+                        Text(formatMetadataKey(key))
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Text(formatMetadataValue(finding.metadata[key] ?? ""))
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            
+            // Show raw content if it's different from display content
+            if !finding.metadata.isEmpty && finding.metadata.count > 0 {
+                Divider()
+                
                 HStack {
-                    Text(key.capitalized)
+                    Text("Source: \(finding.source.rawValue)")
                         .font(.caption2)
-                        .fontWeight(.medium)
                         .foregroundColor(.secondary)
                     
                     Spacer()
                     
-                    Text(finding.metadata[key] ?? "")
+                    Text("Confidence: \(finding.confidence.rawValue)")
                         .font(.caption2)
-                        .lineLimit(2)
+                        .foregroundColor(finding.confidence.color)
                 }
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(6)
+        .background(Color.blue.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+        )
+        .cornerRadius(8)
+    }
+    
+    private func formatMetadataKey(_ key: String) -> String {
+        return key.replacingOccurrences(of: "_", with: " ")
+                  .replacingOccurrences(of: "-", with: " ")
+                  .capitalized
+    }
+    
+    private func formatMetadataValue(_ value: String) -> String {
+        // Format URLs nicely
+        if value.hasPrefix("http") {
+            return value
+        }
+        
+        // Format other values
+        return value.isEmpty ? "N/A" : value
     }
 }
 

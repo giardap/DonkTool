@@ -450,18 +450,61 @@ class OSINTModule: ObservableObject {
         return []
     }
     
-    // MARK: - Google Dorking
+    // MARK: - Enhanced Google Dorking
     
-    private func performGoogleDorking(_ target: String) async -> [OSINTFinding] {
-        // Common Google dorks for information gathering
-        let dorks = [
-            "site:\(target) filetype:pdf",
-            "site:\(target) inurl:admin",
-            "site:\(target) inurl:login",
-            "site:\(target) \"confidential\" OR \"internal\"",
-            "site:\(target) filetype:doc OR filetype:docx",
-            "site:\(target) inurl:backup OR inurl:old"
-        ]
+    private func performGoogleDorking(_ target: String, searchType: OSINTSearchType) async -> [OSINTFinding] {
+        var dorks: [String] = []
+        
+        switch searchType {
+        case .domain:
+            dorks = [
+                "site:\(target) filetype:pdf",
+                "site:\(target) inurl:admin",
+                "site:\(target) inurl:login",
+                "site:\(target) \"confidential\" OR \"internal\"",
+                "site:\(target) filetype:doc OR filetype:docx",
+                "site:\(target) inurl:backup OR inurl:old"
+            ]
+        case .username:
+            dorks = [
+                "\"\(target)\" site:github.com",
+                "\"\(target)\" site:linkedin.com",
+                "\"\(target)\" site:twitter.com",
+                "\"\(target)\" site:instagram.com",
+                "\"\(target)\" filetype:pdf",
+                "\"\(target)\" \"resume\" OR \"cv\""
+            ]
+        case .email:
+            dorks = [
+                "\"\(target)\" filetype:pdf",
+                "\"\(target)\" site:linkedin.com",
+                "\"\(target)\" \"contact\" OR \"about\"",
+                "\"\(target)\" site:github.com",
+                "\"\(target)\" inurl:mailto"
+            ]
+        case .person:
+            dorks = [
+                "\"\(target)\" site:linkedin.com",
+                "\"\(target)\" \"resume\" OR \"cv\"",
+                "\"\(target)\" site:facebook.com",
+                "\"\(target)\" filetype:pdf",
+                "\"\(target)\" \"biography\" OR \"bio\""
+            ]
+        case .phone:
+            dorks = [
+                "\"\(target)\" \"contact\"",
+                "\"\(target)\" site:yellowpages.com",
+                "\"\(target)\" \"phone\" OR \"tel\"",
+                "\"\(target)\" filetype:pdf"
+            ]
+        case .company:
+            dorks = [
+                "\"\(target)\" site:linkedin.com",
+                "\"\(target)\" \"employees\"",
+                "\"\(target)\" \"staff\" OR \"team\"",
+                "\"\(target)\" filetype:pdf"
+            ]
+        }
         
         var findings: [OSINTFinding] = []
         
@@ -472,8 +515,277 @@ class OSINTModule: ObservableObject {
                 content: "Google Dork: \(dork)",
                 confidence: .medium,
                 timestamp: Date(),
-                metadata: ["dork": dork, "url": "https://www.google.com/search?q=\(dork.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"]
+                metadata: ["dork": dork, "search_type": searchType.rawValue, "url": "https://www.google.com/search?q=\(dork.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"]
             ))
+        }
+        
+        return findings
+    }
+    
+    // MARK: - Phone Number Lookup
+    
+    private func performPhoneNumberLookup(_ phoneNumber: String) async -> [OSINTFinding] {
+        var findings: [OSINTFinding] = []
+        
+        // Basic phone number analysis
+        let cleanedNumber = phoneNumber.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+        
+        if cleanedNumber.count >= 10 {
+            // Country code detection
+            var countryCode = ""
+            var region = ""
+            
+            if cleanedNumber.hasPrefix("1") && cleanedNumber.count == 11 {
+                countryCode = "+1"
+                region = "North America"
+            } else if cleanedNumber.hasPrefix("44") {
+                countryCode = "+44"
+                region = "United Kingdom"
+            } else if cleanedNumber.hasPrefix("49") {
+                countryCode = "+49"
+                region = "Germany"
+            }
+            
+            findings.append(OSINTFinding(
+                source: .phoneNumberLookup,
+                type: .locationInfo,
+                content: "Phone Analysis: \(countryCode) \(region)",
+                confidence: .high,
+                timestamp: Date(),
+                metadata: ["phone": phoneNumber, "country_code": countryCode, "region": region]
+            ))
+            
+            // Carrier lookup (placeholder - would use real API)
+            findings.append(OSINTFinding(
+                source: .phoneNumberLookup,
+                type: .networkInfo,
+                content: "Carrier lookup available for: \(phoneNumber)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["phone": phoneNumber, "service": "carrier_lookup"]
+            ))
+        }
+        
+        return findings
+    }
+    
+    // MARK: - Have I Been Pwned Integration
+    
+    private func checkHaveIBeenPwned(_ email: String) async -> [OSINTFinding] {
+        guard let apiKey = apiKeys["haveibeenpwned"] else {
+            return [OSINTFinding(
+                source: .haveibeenpwned,
+                type: .breaches,
+                content: "Have I Been Pwned API key required",
+                confidence: .low,
+                timestamp: Date(),
+                metadata: ["email": email, "status": "api_key_required"]
+            )]
+        }
+        
+        let urlString = "https://haveibeenpwned.com/api/v3/breachedaccount/\(email)"
+        guard let url = URL(string: urlString) else {
+            return [createErrorFinding("Invalid HIBP URL", source: .haveibeenpwned)]
+        }
+        
+        do {
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "hibp-api-key")
+            request.setValue("DonkTool-OSINT", forHTTPHeaderField: "User-Agent")
+            
+            let (data, response) = try await session.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    return parseHIBPResponse(data, email: email)
+                } else if httpResponse.statusCode == 404 {
+                    return [OSINTFinding(
+                        source: .haveibeenpwned,
+                        type: .breaches,
+                        content: "No breaches found for: \(email)",
+                        confidence: .high,
+                        timestamp: Date(),
+                        metadata: ["email": email, "status": "clean"]
+                    )]
+                }
+            }
+        } catch {
+            return [createErrorFinding("HIBP API error: \(error)", source: .haveibeenpwned)]
+        }
+        
+        return []
+    }
+    
+    private func parseHIBPResponse(_ data: Data, email: String) -> [OSINTFinding] {
+        guard let breaches = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return [createErrorFinding("Failed to parse HIBP response", source: .haveibeenpwned)]
+        }
+        
+        var findings: [OSINTFinding] = []
+        
+        for breach in breaches {
+            if let name = breach["Name"] as? String,
+               let breachDate = breach["BreachDate"] as? String,
+               let dataClasses = breach["DataClasses"] as? [String] {
+                
+                findings.append(OSINTFinding(
+                    source: .haveibeenpwned,
+                    type: .breaches,
+                    content: "Breach: \(name) (\(breachDate)) - Data: \(dataClasses.joined(separator: ", "))",
+                    confidence: .high,
+                    timestamp: Date(),
+                    metadata: ["email": email, "breach": name, "date": breachDate, "data_classes": dataClasses.joined(separator: ", ")]
+                ))
+            }
+        }
+        
+        return findings
+    }
+    
+    // MARK: - Email Verification
+    
+    private func verifyEmail(_ email: String) async -> [OSINTFinding] {
+        var findings: [OSINTFinding] = []
+        
+        // Basic email format validation
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+        let isValidFormat = emailPredicate.evaluate(with: email)
+        
+        findings.append(OSINTFinding(
+            source: .emailVerification,
+            type: .emailAddresses,
+            content: "Email format: \(isValidFormat ? "Valid" : "Invalid")",
+            confidence: .high,
+            timestamp: Date(),
+            metadata: ["email": email, "format_valid": String(isValidFormat)]
+        ))
+        
+        if isValidFormat {
+            let domain = String(email.split(separator: "@").last ?? "")
+            
+            // Domain analysis
+            findings.append(OSINTFinding(
+                source: .emailVerification,
+                type: .domainInfo,
+                content: "Email domain: \(domain)",
+                confidence: .high,
+                timestamp: Date(),
+                metadata: ["email": email, "domain": domain]
+            ))
+            
+            // Common email providers
+            let commonProviders = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com"]
+            let isCommonProvider = commonProviders.contains(domain.lowercased())
+            
+            findings.append(OSINTFinding(
+                source: .emailVerification,
+                type: .emailAddresses,
+                content: "Provider type: \(isCommonProvider ? "Common" : "Custom/Corporate")",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["email": email, "provider_type": isCommonProvider ? "common" : "custom"]
+            ))
+        }
+        
+        return findings
+    }
+    
+    // MARK: - LinkedIn OSINT
+    
+    private func searchLinkedIn(_ target: String, searchType: OSINTSearchType) async -> [OSINTFinding] {
+        var findings: [OSINTFinding] = []
+        
+        switch searchType {
+        case .person:
+            let searchURL = "https://www.linkedin.com/search/results/people/?keywords=\(target.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+            findings.append(OSINTFinding(
+                source: .linkedinOSINT,
+                type: .socialProfiles,
+                content: "LinkedIn search for: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["full_name": target, "url": searchURL, "search_type": "people"]
+            ))
+        case .company:
+            let companyURL = "https://www.linkedin.com/search/results/companies/?keywords=\(target.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+            findings.append(OSINTFinding(
+                source: .linkedinOSINT,
+                type: .organizationInfo,
+                content: "LinkedIn company search: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["company": target, "url": companyURL, "search_type": "company"]
+            ))
+        case .username:
+            let profileURL = "https://www.linkedin.com/in/\(target)"
+            findings.append(OSINTFinding(
+                source: .linkedinOSINT,
+                type: .socialProfiles,
+                content: "LinkedIn profile check: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["username": target, "url": profileURL]
+            ))
+        default:
+            break
+        }
+        
+        return findings
+    }
+    
+    // MARK: - GitHub OSINT
+    
+    private func searchGitHub(_ target: String, searchType: OSINTSearchType) async -> [OSINTFinding] {
+        var findings: [OSINTFinding] = []
+        
+        switch searchType {
+        case .username:
+            let profileURL = "https://github.com/\(target)"
+            findings.append(OSINTFinding(
+                source: .githubOSINT,
+                type: .socialProfiles,
+                content: "GitHub profile: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["username": target, "url": profileURL]
+            ))
+            
+            // Repository search
+            let repoSearchURL = "https://github.com/search?q=user:\(target)&type=repositories"
+            findings.append(OSINTFinding(
+                source: .githubOSINT,
+                type: .searchResults,
+                content: "GitHub repositories by: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["username": target, "url": repoSearchURL, "search_type": "repositories"]
+            ))
+            
+        case .email:
+            let commitSearchURL = "https://github.com/search?q=author-email:\(target)&type=commits"
+            findings.append(OSINTFinding(
+                source: .githubOSINT,
+                type: .searchResults,
+                content: "GitHub commits by email: \(target)",
+                confidence: .medium,
+                timestamp: Date(),
+                metadata: ["email": target, "url": commitSearchURL, "search_type": "commits"]
+            ))
+            
+        case .person:
+            let userSearchURL = "https://github.com/search?q=\(target.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&type=users"
+            findings.append(OSINTFinding(
+                source: .githubOSINT,
+                type: .socialProfiles,
+                content: "GitHub user search: \(target)",
+                confidence: .low,
+                timestamp: Date(),
+                metadata: ["full_name": target, "url": userSearchURL, "search_type": "users"]
+            ))
+            
+        default:
+            break
         }
         
         return findings
@@ -531,6 +843,7 @@ class OSINTModule: ObservableObject {
     private func runSherlockSearch(_ username: String) async -> [OSINTFinding] {
         // Check if sherlock is installed
         let sherlockPaths = [
+            "/Users/\(NSUserName())/.local/bin/sherlock",
             "/usr/local/bin/sherlock",
             "/opt/homebrew/bin/sherlock",
             "/usr/bin/sherlock"
@@ -720,6 +1033,17 @@ class OSINTModule: ObservableObject {
         apiKeys[service] = key
         // In a real implementation, this would save to Keychain or secure storage
         UserDefaults.standard.set(key, forKey: "\(service)_api_key")
+    }
+    
+    private func generateSocialMediaURL(platform: String, username: String) -> String {
+        switch platform.lowercased() {
+        case "twitter": return "https://twitter.com/\(username)"
+        case "instagram": return "https://instagram.com/\(username)"
+        case "tiktok": return "https://tiktok.com/@\(username)"
+        case "reddit": return "https://reddit.com/user/\(username)"
+        case "youtube": return "https://youtube.com/@\(username)"
+        default: return "https://\(platform.lowercased()).com/\(username)"
+        }
     }
     
     func clearFindings() {
