@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct DashboardView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     
     var body: some View {
         ScrollView {
@@ -156,5 +157,5 @@ struct ScanResultRowView: View {
 
 #Preview {
     DashboardView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

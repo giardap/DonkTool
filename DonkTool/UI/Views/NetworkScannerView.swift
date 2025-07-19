@@ -8,12 +8,17 @@
 import SwiftUI
 
 struct NetworkScannerView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     @State private var targetIP = ""
-    @State private var portRange = "1-1000"
+    @State private var portRange = "80-85"
     @State private var isScanning = false
     @State private var scanResults: [PortScanResult] = []
     @State private var selectedScanType: ScanType = .tcpConnect
+    @State private var scanProgress: Double = 0.0
+    @State private var currentPort: Int = 0
+    @State private var totalPorts: Int = 0
+    @State private var scanStartTime: Date = Date()
+    @State private var estimatedTimeRemaining: TimeInterval = 0
     
     enum ScanType: String, CaseIterable {
         case tcpConnect = "TCP Connect"
@@ -67,29 +72,63 @@ struct NetworkScannerView: View {
                         Text("Port Range")
                             .font(.headline)
                         
-                        TextField("1-1000", text: $portRange)
+                        TextField("80-85", text: $portRange)
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 120)
                     }
                     
                     Spacer()
                     
-                    // Scan button
-                    Button(action: startScan) {
-                        HStack {
-                            if isScanning {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Scanning...")
-                            } else {
-                                Image(systemName: "play.fill")
-                                Text("Start Scan")
+                    // Scan button and progress
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            print("🔴 BUTTON CLICKED!")
+                            print("🔍 Button state: targetIP='\(targetIP)', isScanning=\(isScanning)")
+                            print("🔍 Button disabled: \(targetIP.isEmpty || isScanning)")
+                            startScan()
+                        }) {
+                            HStack {
+                                if isScanning {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Scanning...")
+                                } else {
+                                    Image(systemName: "play.fill")
+                                    Text("Start Scan")
+                                }
+                            }
+                            .frame(minWidth: 120)
+                        }
+                        .disabled(targetIP.isEmpty || isScanning)
+                        .buttonStyle(.borderedProminent)
+                        
+                        // Progress indicator
+                        if isScanning {
+                            VStack(spacing: 4) {
+                                ProgressView(value: scanProgress, total: 1.0)
+                                    .frame(width: 200)
+                                
+                                HStack {
+                                    Text("Port \(currentPort)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(String(format: "%.1f", scanProgress * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(width: 200)
+                                
+                                if estimatedTimeRemaining > 0 {
+                                    Text("~\(formatTime(estimatedTimeRemaining)) remaining")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
-                        .frame(minWidth: 120)
                     }
-                    .disabled(targetIP.isEmpty || isScanning)
-                    .buttonStyle(.borderedProminent)
                 }
             }
             .padding()
@@ -123,7 +162,7 @@ struct NetworkScannerView: View {
                     )
                 } else {
                     List(scanResults) { result in
-                        PortResultRowView(result: result)
+                        PortResultRowView(result: result, targetIP: targetIP)
                     }
                     .listStyle(.plain)
                 }
@@ -139,33 +178,94 @@ struct NetworkScannerView: View {
     }
     
     private func startScan() {
-        guard !targetIP.isEmpty else { return }
+        print("🔴 START SCAN CALLED")
         
         isScanning = true
         scanResults = []
+        scanProgress = 0.0
+        currentPort = 0
         
-        Task {
-            await performScan()
-            await MainActor.run {
-                isScanning = false
-            }
+        let ports = parsePortRange(portRange)
+        totalPorts = ports.count
+        
+        print("🎯 Scanning \(totalPorts) ports")
+        
+        Task { @MainActor in
+            await performSimpleScan(ports: ports)
         }
     }
     
-    private func performScan() async {
-        // Parse port range
-        let ports = parsePortRange(portRange)
+    @MainActor
+    private func performSimpleScan(ports: [Int]) async {
+        print("🚀 SIMPLE SCAN STARTED")
         
-        for port in ports {
-            if !isScanning { break } // Allow cancellation
+        for (index, port) in ports.enumerated() {
+            guard isScanning else { break }
             
-            let result = await scanPort(host: targetIP, port: port)
-            await MainActor.run {
-                scanResults.append(result)
+            print("📡 Scanning port \(port)")
+            
+            // Update UI
+            currentPort = port
+            scanProgress = Double(index + 1) / Double(totalPorts)
+            
+            print("📊 Progress: \(Int(scanProgress * 100))%")
+            
+            // Scan the port
+            let isOpen = await quickTCPScan(host: targetIP, port: port)
+            
+            let result = PortScanResult(
+                port: port,
+                isOpen: isOpen,
+                service: isOpen ? getServiceName(for: port) : nil,
+                scanTime: Date(),
+                banner: nil,
+                version: nil,
+                attackVectors: isOpen ? getAttackVectors(for: port, service: getServiceName(for: port)) : [],
+                riskLevel: calculateRiskLevel(port: port, service: getServiceName(for: port), isOpen: isOpen)
+            )
+            
+            scanResults.append(result)
+            
+            if isOpen {
+                print("✅ Port \(port) OPEN")
             }
             
-            // Small delay to prevent overwhelming the target
-            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            // Small delay
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        }
+        
+        isScanning = false
+        scanProgress = 1.0
+        print("🏁 Scan complete")
+    }
+    
+    private func quickTCPScan(host: String, port: Int) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let sock = socket(AF_INET, SOCK_STREAM, 0)
+                defer { close(sock) }
+                
+                // Quick timeout
+                var timeout = timeval(tv_sec: 1, tv_usec: 0)
+                setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                
+                var addr = sockaddr_in()
+                addr.sin_family = sa_family_t(AF_INET)
+                addr.sin_port = in_port_t(port).bigEndian
+                
+                // Simple IP conversion
+                if inet_pton(AF_INET, host, &addr.sin_addr) == 1 {
+                    let connectResult = withUnsafePointer(to: &addr) {
+                        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                            connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                        }
+                    }
+                    continuation.resume(returning: connectResult == 0)
+                } else {
+                    continuation.resume(returning: false)
+                }
+            }
         }
     }
     
@@ -175,13 +275,40 @@ struct NetworkScannerView: View {
               let start = Int(components[0]),
               let end = Int(components[1]),
               start <= end else {
-            return Array(1...1000) // Default range
+            return Array(80...85) // Default range
         }
         return Array(start...end)
     }
     
-    private func scanPort(host: String, port: Int) async -> PortScanResult {
-        let isOpen = await checkPortConnection(host: host, port: port)
+    private func getScanDelay(for scanType: ScanType) -> Double {
+        switch scanType {
+        case .tcpConnect:
+            return 50.0 // 50ms - fast but visible
+        case .syn:
+            return 100.0 // 100ms - nmap execution takes time
+        case .udp:
+            return 200.0 // 200ms - UDP is slower due to timeouts
+        case .comprehensive:
+            return 300.0 // 300ms - comprehensive scans are slower
+        }
+    }
+    
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.0fs", seconds)
+        } else if seconds < 3600 {
+            let minutes = Int(seconds / 60)
+            let remainingSeconds = Int(seconds.truncatingRemainder(dividingBy: 60))
+            return String(format: "%dm %ds", minutes, remainingSeconds)
+        } else {
+            let hours = Int(seconds / 3600)
+            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            return String(format: "%dh %dm", hours, minutes)
+        }
+    }
+    
+    private func scanPortAsync(host: String, port: Int, scanType: ScanType) async -> PortScanResult {
+        let isOpen = await checkPortConnection(host: host, port: port, scanType: scanType)
         let service = getServiceName(for: port)
         let banner = isOpen ? await grabBanner(host: host, port: port) : nil
         let attackVectors = getAttackVectors(for: port, service: service)
@@ -228,20 +355,38 @@ struct NetworkScannerView: View {
         case .high: return .high
         case .medium: return .medium
         case .low: return .low
-        case .info: return .info
+        case .info: return .low
         }
     }
     
-    private func grabBanner(host: String, port: Int) async -> String? {
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask {
-                await withCheckedContinuation { continuation in
+    private func checkPortConnection(host: String, port: Int, scanType: ScanType) async -> Bool {
+        print("🔍 Using scan type: \(scanType.rawValue) for port \(port)")
+        switch scanType {
+        case .tcpConnect:
+            return await checkTCPConnection(host: host, port: port)
+        case .syn:
+            return await checkSYNConnection(host: host, port: port)
+        case .udp:
+            return await checkUDPConnection(host: host, port: port)
+        case .comprehensive:
+            return await checkComprehensiveConnection(host: host, port: port)
+        }
+    }
+    
+    private func checkTCPConnection(host: String, port: Int) async -> Bool {
+        print("🔵 === TCP CONNECTION CHECK STARTED for \(host):\(port) ===")
+        return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
+                print("🔍 TCP Testing connection to \(host):\(port) on background thread")
+                
                 let sock = socket(AF_INET, SOCK_STREAM, 0)
-                defer { close(sock) }
+                defer { 
+                    close(sock)
+                    print("🔌 TCP Socket closed for \(host):\(port)")
+                }
                 
                 // Set socket timeout
-                var timeout = timeval(tv_sec: 5, tv_usec: 0)
+                var timeout = timeval(tv_sec: 3, tv_usec: 0)
                 setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
                 setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
                 
@@ -263,7 +408,8 @@ struct NetworkScannerView: View {
                         addr.sin_addr = sockAddrIn.sin_addr
                         freeaddrinfo(result)
                     } else {
-                        continuation.resume(returning: nil)
+                        print("❌ DNS resolution failed for \(host)")
+                        continuation.resume(returning: false)
                         return
                     }
                 }
@@ -274,45 +420,232 @@ struct NetworkScannerView: View {
                     }
                 }
                 
-                if connectResult == 0 {
-                    var banner: String?
-                    
-                    // Some services send banners immediately, others need a request
-                    switch port {
-                    case 80, 8080: // HTTP
-                        let httpRequest = "GET / HTTP/1.1\r\nHost: \(host)\r\n\r\n"
-                        send(sock, httpRequest, httpRequest.count, 0)
-                    case 443: // HTTPS - would need SSL/TLS handling
-                        break
-                    case 25: // SMTP
-                        break // SMTP usually sends banner immediately
-                    case 110: // POP3
-                        break // POP3 usually sends banner immediately
-                    case 143: // IMAP
-                        break // IMAP usually sends banner immediately
-                    case 21: // FTP
-                        break // FTP usually sends banner immediately
-                    default:
-                        break // Most services send banners immediately
-                    }
-                    
-                    var buffer = [UInt8](repeating: 0, count: 4096)
-                    let bytesRead = recv(sock, &buffer, buffer.count, 0)
-                    
-                    if bytesRead > 0 {
-                        banner = String(bytes: buffer[0..<bytesRead], encoding: .utf8)
-                        // Clean up the banner
-                        banner = banner?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if let cleanBanner = banner, cleanBanner.count > 200 {
-                            banner = String(cleanBanner.prefix(200)) + "..."
+                let isOpen = connectResult == 0
+                print("📡 TCP \(host):\(port) = \(isOpen ? "OPEN" : "CLOSED")")
+                continuation.resume(returning: isOpen)
+            }
+        }
+    }
+    
+    private func checkSYNConnection(host: String, port: Int) async -> Bool {
+        // SYN scan using nmap TCP SYN scan (doesn't require root with -sT)
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().async {
+                        let process = Process()
+                        let pipe = Pipe()
+                        
+                        process.standardOutput = pipe
+                        process.standardError = pipe
+                        
+                        // Try to use nmap for SYN-style scan (using -sT instead of -sS)
+                        if let nmapPath = ToolDetection.shared.getToolPath("nmap") {
+                            process.executableURL = URL(fileURLWithPath: nmapPath)
+                            // Use -sT (TCP connect) instead of -sS (SYN scan) to avoid root requirement
+                            process.arguments = ["-sT", "-p", String(port), host, "--max-retries=1", "-T4"]
+                            
+                            do {
+                                try process.run()
+                                process.waitUntilExit()
+                                
+                                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                                let output = String(data: data, encoding: .utf8) ?? ""
+                                
+                                // Check if nmap reports the port as open
+                                let isOpen = output.contains("open") && !output.contains("closed") && !output.contains("filtered")
+                                continuation.resume(returning: isOpen)
+                            } catch {
+                                // Fallback to TCP connect if nmap fails
+                                Task {
+                                    let result = await self.checkTCPConnection(host: host, port: port)
+                                    continuation.resume(returning: result)
+                                }
+                            }
+                        } else {
+                            // Fallback to TCP connect if nmap not available
+                            Task {
+                                let result = await self.checkTCPConnection(host: host, port: port)
+                                continuation.resume(returning: result)
+                            }
                         }
                     }
-                    
-                    continuation.resume(returning: banner)
-                } else {
-                    continuation.resume(returning: nil)
                 }
             }
+            
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 second timeout
+                return false
+            }
+            
+            guard let result = await group.next() else { return false }
+            group.cancelAll()
+            return result
+        }
+    }
+    
+    private func checkUDPConnection(host: String, port: Int) async -> Bool {
+        // UDP scan using nmap with faster options
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().async {
+                        let process = Process()
+                        let pipe = Pipe()
+                        
+                        process.standardOutput = pipe
+                        process.standardError = pipe
+                        
+                        // Try to use nmap for UDP scan with faster options
+                        if let nmapPath = ToolDetection.shared.getToolPath("nmap") {
+                            process.executableURL = URL(fileURLWithPath: nmapPath)
+                            // Use faster UDP scan options
+                            process.arguments = ["-sU", "-p", String(port), host, "--max-retries=1", "-T4", "-n"]
+                            
+                            do {
+                                try process.run()
+                                process.waitUntilExit()
+                                
+                                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                                let output = String(data: data, encoding: .utf8) ?? ""
+                                
+                                // UDP scan results: open, open|filtered, or closed
+                                let isOpen = output.contains("open") && !output.contains("closed")
+                                continuation.resume(returning: isOpen)
+                            } catch {
+                                // UDP scanning is complex without nmap - assume closed
+                                continuation.resume(returning: false)
+                            }
+                        } else {
+                            // Basic UDP socket test (limited effectiveness)
+                            let sock = socket(AF_INET, SOCK_DGRAM, 0)
+                            defer { close(sock) }
+                            
+                            var timeout = timeval(tv_sec: 1, tv_usec: 0)
+                            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                            setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                            
+                            var addr = sockaddr_in()
+                            addr.sin_family = sa_family_t(AF_INET)
+                            addr.sin_port = in_port_t(port).bigEndian
+                            
+                            if inet_pton(AF_INET, host, &addr.sin_addr) == 1 {
+                                let testData = "test".data(using: .utf8)!
+                                let sendResult = testData.withUnsafeBytes { bytes in
+                                    withUnsafePointer(to: &addr) { addrPtr in
+                                        addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockAddrPtr in
+                                            sendto(sock, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0, sockAddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                                        }
+                                    }
+                                }
+                                
+                                // For UDP, try to receive a response
+                                if sendResult >= 0 {
+                                    var buffer = [UInt8](repeating: 0, count: 1024)
+                                    let recvResult = recv(sock, &buffer, buffer.count, 0)
+                                    continuation.resume(returning: recvResult >= 0)
+                                } else {
+                                    continuation.resume(returning: false)
+                                }
+                            } else {
+                                continuation.resume(returning: false)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 second timeout for UDP
+                return false
+            }
+            
+            guard let result = await group.next() else { return false }
+            group.cancelAll()
+            return result
+        }
+    }
+    
+    private func checkComprehensiveConnection(host: String, port: Int) async -> Bool {
+        // Comprehensive scan combines multiple techniques
+        let tcpResult = await checkTCPConnection(host: host, port: port)
+        
+        // For comprehensive scan, if TCP fails, try SYN scan
+        if !tcpResult {
+            return await checkSYNConnection(host: host, port: port)
+        }
+        
+        return tcpResult
+    }
+    
+    private func grabBanner(host: String, port: Int) async -> String? {
+        return await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().async {
+                        let sock = socket(AF_INET, SOCK_STREAM, 0)
+                        defer { close(sock) }
+                        
+                        // Set socket timeout
+                        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+                        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                        
+                        var addr = sockaddr_in()
+                        addr.sin_family = sa_family_t(AF_INET)
+                        addr.sin_port = in_port_t(port).bigEndian
+                        
+                        if inet_pton(AF_INET, host, &addr.sin_addr) != 1 {
+                            var hints = addrinfo()
+                            hints.ai_family = AF_INET
+                            hints.ai_socktype = SOCK_STREAM
+                            
+                            var result: UnsafeMutablePointer<addrinfo>?
+                            let status = getaddrinfo(host, nil, &hints, &result)
+                            
+                            if status == 0, let addrInfo = result {
+                                let sockAddrIn = addrInfo.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
+                                addr.sin_addr = sockAddrIn.sin_addr
+                                freeaddrinfo(result)
+                            } else {
+                                continuation.resume(returning: nil)
+                                return
+                            }
+                        }
+                        
+                        let connectResult = withUnsafePointer(to: &addr) {
+                            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                            }
+                        }
+                        
+                        if connectResult == 0 {
+                            var banner: String?
+                            
+                            // Some services send banners immediately, others need a request
+                            switch port {
+                            case 80, 8080: // HTTP
+                                let httpRequest = "GET / HTTP/1.1\r\nHost: \(host)\r\n\r\n"
+                                send(sock, httpRequest, httpRequest.count, 0)
+                            default:
+                                break // Most services send banners immediately
+                            }
+                            
+                            var buffer = [UInt8](repeating: 0, count: 4096)
+                            let bytesRead = recv(sock, &buffer, buffer.count, 0)
+                            
+                            if bytesRead > 0 {
+                                banner = String(bytes: buffer[0..<bytesRead], encoding: .utf8)
+                                banner = banner?.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if let cleanBanner = banner, cleanBanner.count > 200 {
+                                    banner = String(cleanBanner.prefix(200)) + "..."
+                                }
+                            }
+                            
+                            continuation.resume(returning: banner)
+                        } else {
+                            continuation.resume(returning: nil)
+                        }
+                    }
                 }
             }
             
@@ -356,136 +689,112 @@ struct NetworkScannerView: View {
         switch port {
         case 21: // FTP
             vectors.append(AttackVector(
-                name: "FTP Anonymous Login",
-                description: "Check for anonymous FTP access",
-                tools: ["hydra", "nmap", "metasploit"],
-                commands: ["hydra -l anonymous -p '' \(targetIP) ftp", "nmap --script ftp-anon \(targetIP)"],
-                severity: .medium
+                name: "FTP Banner Grabbing",
+                description: "Enumerate FTP service version and capabilities",
+                severity: .medium,
+                requirements: [
+                    ToolRequirement(name: "nmap", type: .tool, description: "Network discovery and security auditing"),
+                    ToolRequirement(name: "curl", type: .builtin, description: "Command line tool for transferring data")
+                ],
+                commands: [
+                    "nmap -sV -p 21 {target}",
+                    "curl ftp://{target} --list-only"
+                ],
+                references: ["https://nmap.org/nsedoc/scripts/ftp-anon.html"]
             ))
-            vectors.append(AttackVector(
-                name: "FTP Brute Force",
-                description: "Brute force FTP credentials",
-                tools: ["hydra", "medusa", "ncrack"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) ftp"],
-                severity: .high
-            ))
+            
         case 22: // SSH
             vectors.append(AttackVector(
-                name: "SSH Brute Force",
-                description: "Brute force SSH credentials",
-                tools: ["hydra", "medusa", "ncrack"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) ssh"],
-                severity: .high
+                name: "SSH Banner Grabbing",
+                description: "Identify SSH version and supported authentication methods",
+                severity: .low,
+                requirements: [
+                    ToolRequirement(name: "nmap", type: .tool, description: "Network discovery and security auditing")
+                ],
+                commands: [
+                    "nmap -sV -p 22 {target}",
+                    "ssh -o ConnectTimeout=5 {target} 2>&1 | head -1"
+                ],
+                references: ["https://nmap.org/nsedoc/scripts/ssh-hostkey.html"]
             ))
-            vectors.append(AttackVector(
-                name: "SSH Key Enumeration",
-                description: "Check for weak SSH keys or configurations",
-                tools: ["ssh-audit", "nmap"],
-                commands: ["ssh-audit \(targetIP)", "nmap --script ssh2-enum-algos \(targetIP)"],
-                severity: .medium
-            ))
-        case 23: // Telnet
-            vectors.append(AttackVector(
-                name: "Telnet Brute Force",
-                description: "Brute force Telnet credentials",
-                tools: ["hydra", "medusa"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) telnet"],
-                severity: .critical
-            ))
-        case 25: // SMTP
-            vectors.append(AttackVector(
-                name: "SMTP User Enumeration",
-                description: "Enumerate valid email addresses",
-                tools: ["smtp-user-enum", "nmap"],
-                commands: ["nmap --script smtp-enum-users \(targetIP)"],
-                severity: .medium
-            ))
-        case 53: // DNS
-            vectors.append(AttackVector(
-                name: "DNS Zone Transfer",
-                description: "Attempt DNS zone transfer",
-                tools: ["dig", "nslookup", "dnsrecon"],
-                commands: ["dig axfr @\(targetIP) domain.com"],
-                severity: .high
-            ))
+            
         case 80, 443: // HTTP/HTTPS
             vectors.append(AttackVector(
                 name: "Web Directory Enumeration",
-                description: "Discover hidden directories and files",
-                tools: ["dirb", "gobuster", "dirbuster"],
-                commands: ["dirb http://\(targetIP)", "gobuster dir -u http://\(targetIP) -w /usr/share/wordlists/dirb/common.txt"],
-                severity: .medium
+                description: "Discover hidden directories and files on web server",
+                severity: .medium,
+                requirements: [
+                    ToolRequirement(name: "gobuster", type: .optional, description: "Directory/file/DNS busting tool"),
+                    ToolRequirement(name: "dirb", type: .optional, description: "Web content scanner"),
+                    ToolRequirement(name: "curl", type: .builtin, description: "Command line tool for transferring data")
+                ],
+                commands: [
+                    "gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt",
+                    "dirb http://{target}",
+                    "curl -I http://{target}"
+                ],
+                references: ["https://github.com/OJ/gobuster"]
             ))
+            
             vectors.append(AttackVector(
-                name: "Web Vulnerability Scan",
-                description: "Scan for common web vulnerabilities",
-                tools: ["nikto", "nmap", "burp"],
-                commands: ["nikto -h \(targetIP)", "nmap --script http-vuln* \(targetIP)"],
-                severity: .high
+                name: "Web Vulnerability Scanning",
+                description: "Automated web application security testing",
+                severity: .high,
+                requirements: [
+                    ToolRequirement(name: "burpsuite", type: .gui, description: "Web application security testing platform"),
+                    ToolRequirement(name: "nikto", type: .optional, description: "Web server scanner")
+                ],
+                commands: [
+                    "# Manual: Configure Burp Suite proxy and perform active scan",
+                    "nikto -h http://{target}"
+                ],
+                references: ["https://portswigger.net/burp"]
             ))
-        case 110: // POP3
-            vectors.append(AttackVector(
-                name: "POP3 Brute Force",
-                description: "Brute force POP3 credentials",
-                tools: ["hydra", "medusa"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) pop3"],
-                severity: .high
-            ))
-        case 143: // IMAP
-            vectors.append(AttackVector(
-                name: "IMAP Brute Force",
-                description: "Brute force IMAP credentials",
-                tools: ["hydra", "medusa"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) imap"],
-                severity: .high
-            ))
-        case 3389: // RDP
-            vectors.append(AttackVector(
-                name: "RDP Brute Force",
-                description: "Brute force RDP credentials",
-                tools: ["hydra", "rdesktop", "ncrack"],
-                commands: ["hydra -L users.txt -P pass.txt rdp://\(targetIP)"],
-                severity: .critical
-            ))
+            
         case 445: // SMB
             vectors.append(AttackVector(
                 name: "SMB Enumeration",
-                description: "Enumerate SMB shares and users",
-                tools: ["smbclient", "enum4linux", "nmap"],
-                commands: ["smbclient -L \(targetIP)", "enum4linux \(targetIP)"],
-                severity: .medium
+                description: "Enumerate SMB shares and permissions",
+                severity: .high,
+                requirements: [
+                    ToolRequirement(name: "nmap", type: .tool, description: "Network discovery and security auditing"),
+                    ToolRequirement(name: "smbclient", type: .optional, description: "SMB client program")
+                ],
+                commands: [
+                    "nmap --script smb-enum-shares -p 445 {target}",
+                    "smbclient -L {target} -N"
+                ],
+                references: ["https://nmap.org/nsedoc/scripts/smb-enum-shares.html"]
             ))
-        case 1433: // MSSQL
+            
+        case 3389: // RDP
             vectors.append(AttackVector(
-                name: "MSSQL Brute Force",
-                description: "Brute force MSSQL credentials",
-                tools: ["hydra", "medusa", "nmap"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) mssql"],
-                severity: .high
+                name: "RDP Security Assessment",
+                description: "Test RDP service for common vulnerabilities",
+                severity: .critical,
+                requirements: [
+                    ToolRequirement(name: "nmap", type: .tool, description: "Network discovery and security auditing"),
+                    ToolRequirement(name: "rdesktop", type: .optional, description: "RDP client")
+                ],
+                commands: [
+                    "nmap --script rdp-enum-encryption -p 3389 {target}",
+                    "nmap --script rdp-vuln-ms12-020 -p 3389 {target}"
+                ],
+                references: ["https://nmap.org/nsedoc/scripts/rdp-enum-encryption.html"]
             ))
-        case 3306: // MySQL
-            vectors.append(AttackVector(
-                name: "MySQL Brute Force",
-                description: "Brute force MySQL credentials",
-                tools: ["hydra", "medusa", "nmap"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) mysql"],
-                severity: .high
-            ))
-        case 5432: // PostgreSQL
-            vectors.append(AttackVector(
-                name: "PostgreSQL Brute Force",
-                description: "Brute force PostgreSQL credentials",
-                tools: ["hydra", "medusa", "nmap"],
-                commands: ["hydra -L users.txt -P pass.txt \(targetIP) postgres"],
-                severity: .high
-            ))
+            
         default:
             vectors.append(AttackVector(
-                name: "Port Service Enumeration",
-                description: "Identify service and version",
-                tools: ["nmap", "netcat"],
-                commands: ["nmap -sV -p \(port) \(targetIP)", "nc -nv \(targetIP) \(port)"],
-                severity: .info
+                name: "Port Service Detection",
+                description: "Identify service version and potential vulnerabilities",
+                severity: .info,
+                requirements: [
+                    ToolRequirement(name: "nmap", type: .tool, description: "Network discovery and security auditing")
+                ],
+                commands: [
+                    "nmap -sV -sC -p {port} {target}"
+                ],
+                references: ["https://nmap.org/book/man-version-detection.html"]
             ))
         }
         
@@ -510,129 +819,22 @@ struct NetworkScannerView: View {
         }
     }
     
-    private func checkPortConnection(host: String, port: Int) async -> Bool {
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await withCheckedContinuation { continuation in
-                    DispatchQueue.global().async {
-                        let sock = socket(AF_INET, SOCK_STREAM, 0)
-                        defer { close(sock) }
-                        
-                        // Set socket timeout
-                        var timeout = timeval(tv_sec: 2, tv_usec: 0)
-                        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-                        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-                        
-                        var addr = sockaddr_in()
-                        addr.sin_family = sa_family_t(AF_INET)
-                        addr.sin_port = in_port_t(port).bigEndian
-                        
-                        // Try to resolve hostname if not IP
-                        if inet_pton(AF_INET, host, &addr.sin_addr) != 1 {
-                            // Try to resolve hostname with timeout
-                            var hints = addrinfo()
-                            hints.ai_family = AF_INET
-                            hints.ai_socktype = SOCK_STREAM
-                            
-                            var result: UnsafeMutablePointer<addrinfo>?
-                            let status = getaddrinfo(host, nil, &hints, &result)
-                            
-                            if status == 0, let addrInfo = result {
-                                let sockAddrIn = addrInfo.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
-                                addr.sin_addr = sockAddrIn.sin_addr
-                                freeaddrinfo(result)
-                            } else {
-                                continuation.resume(returning: false)
-                                return
-                            }
-                        }
-                        
-                        let connectResult = withUnsafePointer(to: &addr) {
-                            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-                            }
-                        }
-                        
-                        continuation.resume(returning: connectResult == 0)
-                    }
-                }
-            }
-            
-            // Add timeout task
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 second timeout
-                return false
-            }
-            
-            // Return first completed result
-            guard let result = await group.next() else { return false }
-            group.cancelAll()
-            return result
-        }
-    }
-    
     private func getServiceName(for port: Int) -> String? {
         let commonPorts: [Int: String] = [
-            21: "FTP",
-            22: "SSH",
-            23: "Telnet",
-            25: "SMTP",
-            53: "DNS",
-            80: "HTTP",
-            110: "POP3",
-            143: "IMAP",
-            443: "HTTPS",
-            993: "IMAPS",
-            995: "POP3S",
-            3389: "RDP",
-            5432: "PostgreSQL",
-            3306: "MySQL"
+            21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+            80: "HTTP", 110: "POP3", 143: "IMAP", 443: "HTTPS", 993: "IMAPS",
+            995: "POP3S", 3389: "RDP", 5432: "PostgreSQL", 3306: "MySQL"
         ]
         return commonPorts[port]
     }
 }
 
-struct PortScanResult: Identifiable {
-    let id = UUID()
-    let port: Int
-    let isOpen: Bool
-    let service: String?
-    let scanTime: Date
-    let banner: String?
-    let version: String?
-    let attackVectors: [AttackVector]
-    let riskLevel: RiskLevel
-    
-    enum RiskLevel: String, CaseIterable {
-        case critical = "Critical"
-        case high = "High"
-        case medium = "Medium"
-        case low = "Low"
-        case info = "Info"
-        
-        var color: Color {
-            switch self {
-            case .critical: return .red
-            case .high: return .orange
-            case .medium: return .yellow
-            case .low: return .blue
-            case .info: return .gray
-            }
-        }
-    }
-}
-
-struct AttackVector: Identifiable {
-    let id = UUID()
-    let name: String
-    let description: String
-    let tools: [String]
-    let commands: [String]
-    let severity: PortScanResult.RiskLevel
-}
+// PortScanResult struct is now defined in Models.swift - removed duplicate
+// AttackVector struct is now defined in Models.swift - removed duplicate
 
 struct PortResultRowView: View {
     let result: PortScanResult
+    let targetIP: String
     @State private var isShowingDetail = false
     @State private var isHovering = false
     
@@ -645,12 +847,10 @@ struct PortResultRowView: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    // Port number
                     Text("\(result.port)")
                         .font(.headline)
                         .fontWeight(.medium)
                     
-                    // Service name
                     if let service = result.service {
                         Text(service)
                             .font(.body)
@@ -663,7 +863,6 @@ struct PortResultRowView: View {
                     
                     Spacer()
                     
-                    // Risk level badge
                     if result.isOpen {
                         Text(result.riskLevel.rawValue)
                             .font(.caption2)
@@ -675,7 +874,6 @@ struct PortResultRowView: View {
                             .cornerRadius(4)
                     }
                     
-                    // Status text
                     Text(result.isOpen ? "Open" : "Closed")
                         .font(.caption)
                         .padding(.horizontal, 8)
@@ -684,14 +882,12 @@ struct PortResultRowView: View {
                         .cornerRadius(6)
                 }
                 
-                // Version info if available
                 if let version = result.version {
                     Text("Version: \(version)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
-                // Attack vectors count
                 if result.isOpen && !result.attackVectors.isEmpty {
                     Text("\(result.attackVectors.count) attack vector(s) available")
                         .font(.caption)
@@ -701,7 +897,6 @@ struct PortResultRowView: View {
             
             Spacer()
             
-            // Chevron indicator for open ports
             if result.isOpen {
                 Image(systemName: "chevron.right")
                     .foregroundColor(.secondary)
@@ -731,118 +926,56 @@ struct PortResultRowView: View {
             }
         }
         .sheet(isPresented: $isShowingDetail) {
-            PortDetailView(result: result)
+            PortDetailView(result: result, targetIP: targetIP)
         }
     }
 }
 
 struct PortDetailView: View {
     let result: PortScanResult
+    let targetIP: String
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Port \(result.port)")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                            
-                            Spacer()
-                            
-                            Text(result.riskLevel.rawValue)
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(result.riskLevel.color.opacity(0.8))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                        }
-                        
-                        if let service = result.service {
-                            Text("Service: \(service)")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        if let version = result.version {
-                            Text("Version: \(version)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                    Text("Port \(result.port)")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    
+                    if let service = result.service {
+                        Text("Service: \(service)")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
                     }
                     
-                    Divider()
-                    
-                    // Banner information
                     if let banner = result.banner {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Banner")
                                 .font(.headline)
                             
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                Text(banner)
-                                    .font(.body)
-                                    .fontDesign(.monospaced)
-                                    .padding()
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(8)
-                            }
+                            Text(banner)
+                                .font(.body)
+                                .fontDesign(.monospaced)
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
                         }
                     }
                     
-                    // Attack vectors
                     if !result.attackVectors.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Attack Vectors (\(result.attackVectors.count))")
                                 .font(.headline)
                             
-                            LazyVStack(spacing: 12) {
-                                ForEach(result.attackVectors) { vector in
-                                    AttackVectorRowView(vector: vector)
-                                }
+                            ForEach(result.attackVectors) { vector in
+                                AttackVectorRowView(vector: vector, target: targetIP, port: result.port)
                             }
                         }
                     }
                     
-                    // Port scan information
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Scan Information")
-                            .font(.headline)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Scan Time:")
-                                    .fontWeight(.medium)
-                                Spacer()
-                                Text(result.scanTime.formatted(date: .omitted, time: .shortened))
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            HStack {
-                                Text("Status:")
-                                    .fontWeight(.medium)
-                                Spacer()
-                                Text(result.isOpen ? "Open" : "Closed")
-                                    .foregroundColor(result.isOpen ? .green : .red)
-                            }
-                            
-                            HStack {
-                                Text("Risk Level:")
-                                    .fontWeight(.medium)
-                                Spacer()
-                                Text(result.riskLevel.rawValue)
-                                    .foregroundColor(result.riskLevel.color)
-                            }
-                        }
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(8)
-                    }
+                    Spacer()
                 }
                 .padding()
             }
@@ -861,34 +994,25 @@ struct PortDetailView: View {
 
 struct AttackVectorRowView: View {
     let vector: AttackVector
+    let target: String
+    let port: Int
     @State private var isExpanded = false
+    @State private var showingAttackExecution = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(vector.name)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        Text(vector.severity.rawValue)
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(vector.severity.color.opacity(0.8))
-                            .foregroundColor(.white)
-                            .cornerRadius(4)
-                    }
+                    Text(vector.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
                     
                     Text(vector.description)
                         .font(.body)
                         .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+                
+                Spacer()
                 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -897,56 +1021,51 @@ struct AttackVectorRowView: View {
                 } label: {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .foregroundColor(.secondary)
-                        .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.plain)
             }
             
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
-                    // Tools
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Tools:")
                             .font(.subheadline)
                             .fontWeight(.medium)
                         
-                        Text(vector.tools.joined(separator: ", "))
+                        Text(vector.requirements.map { $0.name }.joined(separator: ", "))
                             .font(.body)
                             .foregroundColor(.secondary)
                     }
                     
-                    // Commands
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Commands:")
                             .font(.subheadline)
                             .fontWeight(.medium)
                         
                         ForEach(vector.commands, id: \.self) { command in
-                            HStack {
-                                Text(command)
-                                    .font(.body)
-                                    .fontDesign(.monospaced)
-                                    .textSelection(.enabled)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(4)
-                                
-                                Spacer()
-                                
-                                Button {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(command, forType: .string)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Copy command")
-                            }
+                            Text(command)
+                                .font(.body)
+                                .fontDesign(.monospaced)
+                                .textSelection(.enabled)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(4)
                         }
                     }
+                    
+                    Button(action: { showingAttackExecution = true }) {
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Execute Attack")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.8))
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.top, 8)
             }
@@ -954,10 +1073,13 @@ struct AttackVectorRowView: View {
         .padding()
         .background(Color.gray.opacity(0.05))
         .cornerRadius(8)
+        .sheet(isPresented: $showingAttackExecution) {
+            AttackExecutionView(attackVector: vector, target: target, port: port)
+        }
     }
 }
 
 #Preview {
     NetworkScannerView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

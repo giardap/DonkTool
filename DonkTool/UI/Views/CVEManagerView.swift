@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CVEManagerView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     @State private var searchText = ""
     @State private var selectedSeverity: String? = nil
     @State private var isShowingDetail = false
@@ -20,10 +20,10 @@ struct CVEManagerView: View {
         var filtered = appState.cveDatabase.searchCVEs(query: searchText)
         
         if let severity = selectedSeverity, !severity.isEmpty {
-            filtered = filtered.filter { $0.severity?.lowercased() == severity.lowercased() }
+            filtered = filtered.filter { $0.baseSeverity?.lowercased() == severity.lowercased() }
         }
         
-        return filtered.sorted { ($0.cvssScore ?? 0) > ($1.cvssScore ?? 0) }
+        return filtered.sorted { ($0.baseScore ?? 0) > ($1.baseScore ?? 0) }
     }
     
     var body: some View {
@@ -137,8 +137,8 @@ struct CVERowView: View {
                 
                 Spacer()
                 
-                if let score = cve.cvssScore {
-                    CVSSScoreView(score: score, severity: cve.severity)
+                if let score = cve.baseScore {
+                    CVSSScoreView(score: score, severity: cve.baseSeverity)
                 }
             }
             
@@ -148,18 +148,6 @@ struct CVERowView: View {
                 .foregroundColor(.primary)
             
             HStack {
-                if let vendor = cve.vendor {
-                    Label(vendor, systemImage: "building.2")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                if let product = cve.product {
-                    Label(product, systemImage: "app")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
                 Spacer()
                 
                 Text(cve.publishedDate, style: .date)
@@ -218,8 +206,8 @@ struct CVEDetailView: View {
                             .font(.largeTitle)
                             .fontWeight(.bold)
                         
-                        if let score = cve.cvssScore {
-                            CVSSScoreView(score: score, severity: cve.severity)
+                        if let score = cve.baseScore {
+                            CVSSScoreView(score: score, severity: cve.baseSeverity)
                         }
                     }
                     
@@ -239,13 +227,6 @@ struct CVEDetailView: View {
                         Text("Details")
                             .font(.headline)
                         
-                        if let vendor = cve.vendor {
-                            DetailRow(label: "Vendor", value: vendor)
-                        }
-                        
-                        if let product = cve.product {
-                            DetailRow(label: "Product", value: product)
-                        }
                         
                         DetailRow(label: "Published", value: cve.publishedDate.formatted(date: .abbreviated, time: .omitted))
                         DetailRow(label: "Modified", value: cve.lastModifiedDate.formatted(date: .abbreviated, time: .omitted))
@@ -299,5 +280,5 @@ struct DetailRow: View {
 
 #Preview {
     CVEManagerView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

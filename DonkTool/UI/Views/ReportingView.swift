@@ -2,102 +2,45 @@
 //  ReportingView.swift
 //  DonkTool
 //
-//  Report generation and export interface
+//  Report generation interface with real PDF creation
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ReportingView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     @State private var selectedReportType: ReportType = .executive
-    @State private var isGeneratingReport = false
-    @State private var generatedReports: [GeneratedReport] = []
     @State private var selectedTargets: Set<UUID> = []
+    @State private var includeDetailedFindings = true
+    @State private var includeRecommendations = true
+    @State private var isGeneratingReport = false
+    @State private var showingFilePicker = false
+    @State private var generatedReportData: Data?
+    
+    enum ReportType: String, CaseIterable {
+        case executive = "Executive Summary"
+        case technical = "Technical Report"
+        case detailed = "Detailed Findings"
+        case compliance = "Compliance Report"
+        
+        var description: String {
+            switch self {
+            case .executive: return "High-level overview for management"
+            case .technical: return "Technical details for IT teams"
+            case .detailed: return "Comprehensive vulnerability report"
+            case .compliance: return "Compliance-focused findings"
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Report Configuration Panel
-            VStack(spacing: 16) {
+            // Configuration Panel
+            VStack(spacing: 20) {
                 HStack {
                     Text("Report Generation")
                         .font(.title2)
-                        .fontWeight(.semibold)
-                    Spacer()
-                }
-                
-                // Report type selection
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Report Type")
-                        .font(.headline)
-                    
-                    Picker("Report Type", selection: $selectedReportType) {
-                        ForEach(ReportType.allCases, id: \.self) { type in
-                            Text(type.displayName).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                
-                // Target selection
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Include Targets")
-                        .font(.headline)
-                    
-                    if appState.targets.isEmpty {
-                        Text("No targets available")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    } else {
-                        LazyVGrid(columns: [
-                            GridItem(.flexible()),
-                            GridItem(.flexible())
-                        ], spacing: 8) {
-                            ForEach(appState.targets) { target in
-                                TargetSelectionView(
-                                    target: target,
-                                    isSelected: selectedTargets.contains(target.id)
-                                ) { isSelected in
-                                    if isSelected {
-                                        selectedTargets.insert(target.id)
-                                    } else {
-                                        selectedTargets.remove(target.id)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Action buttons
-                HStack {
-                    Button("Select All Targets") {
-                        selectedTargets = Set(appState.targets.map { $0.id })
-                    }
-                    .disabled(appState.targets.isEmpty)
-                    
-                    Button("Clear Selection") {
-                        selectedTargets.removeAll()
-                    }
-                    
-                    Spacer()
-                    
-                    Button("Generate Report") {
-                        generateReport()
-                    }
-                    .disabled(selectedTargets.isEmpty || isGeneratingReport)
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-            
-            Divider()
-            
-            // Generated Reports
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("Generated Reports")
-                        .font(.title3)
                         .fontWeight(.semibold)
                     
                     Spacer()
@@ -105,28 +48,139 @@ struct ReportingView: View {
                     if isGeneratingReport {
                         ProgressView()
                             .scaleEffect(0.8)
-                        Text("Generating...")
+                        Text("Generating report...")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.top)
                 
-                if generatedReports.isEmpty && !isGeneratingReport {
-                    ContentUnavailableView(
-                        "No Reports Generated",
-                        systemImage: "doc.text",
-                        description: Text("Select targets and generate your first report")
-                    )
-                } else {
-                    List(generatedReports) { report in
-                        ReportRowView(report: report) {
-                            exportReport(report)
+                // Report type selection
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Report Type")
+                        .font(.headline)
+                    
+                    ForEach(ReportType.allCases, id: \.self) { type in
+                        ReportTypeSelectionView(
+                            type: type,
+                            isSelected: selectedReportType == type
+                        ) {
+                            selectedReportType = type
                         }
                     }
-                    .listStyle(.plain)
                 }
+                
+                Divider()
+                
+                // Target selection
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Include Targets")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        Button("Select All") {
+                            selectedTargets = Set(appState.targets.map { $0.id })
+                        }
+                        
+                        Button("Clear All") {
+                            selectedTargets.removeAll()
+                        }
+                    }
+                    
+                    if appState.targets.isEmpty {
+                        Text("No targets available. Add targets in the Network Scanner.")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                    } else {
+                        ForEach(appState.targets) { target in
+                            TargetSelectionView(
+                                target: target,
+                                isSelected: selectedTargets.contains(target.id)
+                            ) { isSelected in
+                                if isSelected {
+                                    selectedTargets.insert(target.id)
+                                } else {
+                                    selectedTargets.remove(target.id)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                // Report options
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Report Options")
+                        .font(.headline)
+                    
+                    Toggle("Include Detailed Findings", isOn: $includeDetailedFindings)
+                    Toggle("Include Remediation Recommendations", isOn: $includeRecommendations)
+                }
+                
+                // Generate button
+                Button(action: generateReport) {
+                    HStack {
+                        Image(systemName: "doc.text.fill")
+                        Text("Generate PDF Report")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                }
+                .disabled(selectedTargets.isEmpty || isGeneratingReport)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+            
+            Divider()
+            
+            // Preview/Status section
+            VStack {
+                if let reportData = generatedReportData {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.green)
+                        
+                        Text("Report Generated Successfully")
+                            .font(.headline)
+                        
+                        Text("Size: \(ByteCountFormatter.string(fromByteCount: Int64(reportData.count), countStyle: .file))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Button("Save Report") {
+                            showingFilePicker = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                } else {
+                    ContentUnavailableView(
+                        "No Report Generated",
+                        systemImage: "doc.text",
+                        description: Text("Configure your report settings and generate a PDF")
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .fileExporter(
+            isPresented: $showingFilePicker,
+            document: generatedReportData.map { PDFDocument(data: $0) },
+            contentType: .pdf,
+            defaultFilename: generateFilename()
+        ) { result in
+            switch result {
+            case .success(let url):
+                print("Report saved to: \(url)")
+            case .failure(let error):
+                print("Failed to save report: \(error)")
             }
         }
     }
@@ -138,46 +192,13 @@ struct ReportingView: View {
         
         Task {
             let targets = appState.targets.filter { selectedTargets.contains($0.id) }
-            let report = await createActualReport(type: selectedReportType, targets: targets)
+            let reportData = await generatePDFReport(type: selectedReportType, targets: targets)
             
             await MainActor.run {
-                generatedReports.insert(report, at: 0)
+                generatedReportData = reportData
                 isGeneratingReport = false
             }
         }
-    }
-    
-    private func createActualReport(type: ReportType, targets: [Target]) async -> GeneratedReport {
-        let vulnerabilityCount = targets.reduce(0) { $0 + $1.vulnerabilities.count }
-        let criticalCount = targets.flatMap { $0.vulnerabilities }.filter { $0.severity == .critical }.count
-        let highCount = targets.flatMap { $0.vulnerabilities }.filter { $0.severity == .high }.count
-        
-        // Generate actual PDF report
-        let pdfData = await generatePDFReport(type: type, targets: targets)
-        let fileSize = ByteCountFormatter.string(fromByteCount: Int64(pdfData.count), countStyle: .file)
-        
-        // Save PDF to Documents directory
-        let fileName = "\(type.displayName.replacingOccurrences(of: " ", with: "_"))_Report_\(Date().formatted(date: .abbreviated, time: .omitted).replacingOccurrences(of: " ", with: "_")).pdf"
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let fileURL = documentsPath.appendingPathComponent(fileName)
-        
-        do {
-            try pdfData.write(to: fileURL)
-        } catch {
-            print("Error saving PDF: \(error)")
-        }
-        
-        return GeneratedReport(
-            type: type,
-            name: "\(type.displayName) Report - \(Date().formatted(date: .abbreviated, time: .omitted))",
-            targetCount: targets.count,
-            vulnerabilityCount: vulnerabilityCount,
-            criticalCount: criticalCount,
-            highCount: highCount,
-            generatedAt: Date(),
-            fileSize: fileSize,
-            filePath: fileURL.path
-        )
     }
     
     private func generatePDFReport(type: ReportType, targets: [Target]) async -> Data {
@@ -197,7 +218,7 @@ struct ReportingView: View {
             .font: NSFont.boldSystemFont(ofSize: 24),
             .foregroundColor: NSColor.black
         ]
-        let title = "\(type.displayName)\nPenetration Testing Report"
+        let title = "\(type.rawValue)\nPenetration Testing Report"
         let titleString = NSAttributedString(string: title, attributes: titleAttributes)
         let titleLine = CTLineCreateWithAttributedString(titleString)
         context.textPosition = CGPoint(x: 50, y: 700)
@@ -281,81 +302,74 @@ struct ReportingView: View {
     }
     
     private func generateExecutiveSummary(targets: [Target]) -> String {
-        let totalVulns = targets.reduce(0) { $0 + $1.vulnerabilities.count }
+        let totalVulnerabilities = targets.reduce(0) { $0 + $1.vulnerabilities.count }
         let criticalCount = targets.flatMap { $0.vulnerabilities }.filter { $0.severity == .critical }.count
         let highCount = targets.flatMap { $0.vulnerabilities }.filter { $0.severity == .high }.count
         
         return """
         EXECUTIVE SUMMARY
         
-        This penetration testing assessment was conducted on \(targets.count) target(s).
+        This penetration testing assessment was conducted on \(targets.count) target(s) to identify security vulnerabilities and weaknesses.
         
-        Key Findings:
-        • Total Vulnerabilities: \(totalVulns)
-        • Critical Severity: \(criticalCount)
-        • High Severity: \(highCount)
+        KEY FINDINGS:
+        • Total vulnerabilities identified: \(totalVulnerabilities)
+        • Critical severity: \(criticalCount)
+        • High severity: \(highCount)
+        • Targets assessed: \(targets.count)
         
-        Recommendations:
-        • Address all critical and high severity vulnerabilities immediately
-        • Implement proper security controls and monitoring
-        • Conduct regular security assessments
+        The assessment revealed several security concerns that require immediate attention. Critical and high-severity vulnerabilities should be addressed as a priority to reduce the organization's risk exposure.
+        
+        RECOMMENDATIONS:
+        1. Implement a vulnerability management program
+        2. Regular security assessments and monitoring
+        3. Security awareness training for staff
+        4. Network segmentation and access controls
+        
+        DETAILED FINDINGS:
         """
     }
     
-    private func exportReport(_ report: GeneratedReport) {
-        if let filePath = report.filePath {
-            NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: "")
-        }
+    private func generateFilename() -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+        return "PenTest_Report_\(selectedReportType.rawValue.replacingOccurrences(of: " ", with: "_"))_\(dateString).pdf"
     }
 }
 
-enum ReportType: String, CaseIterable {
-    case executive = "executive"
-    case technical = "technical"
-    case compliance = "compliance"
-    case summary = "summary"
+struct ReportTypeSelectionView: View {
+    let type: ReportingView.ReportType
+    let isSelected: Bool
+    let onSelect: () -> Void
     
-    var displayName: String {
-        switch self {
-        case .executive: return "Executive Summary"
-        case .technical: return "Technical Report"
-        case .compliance: return "Compliance Report"
-        case .summary: return "Quick Summary"
+    var body: some View {
+        Button(action: onSelect) {
+            HStack {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(isSelected ? .blue : .secondary)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(type.rawValue)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text(type.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1)
+            )
         }
-    }
-    
-    var description: String {
-        switch self {
-        case .executive: return "High-level overview for management and stakeholders"
-        case .technical: return "Detailed technical findings with remediation steps"
-        case .compliance: return "Compliance-focused report for regulatory requirements"
-        case .summary: return "Concise summary of key findings"
-        }
-    }
-}
-
-struct GeneratedReport: Identifiable {
-    let id = UUID()
-    let type: ReportType
-    let name: String
-    let targetCount: Int
-    let vulnerabilityCount: Int
-    let criticalCount: Int
-    let highCount: Int
-    let generatedAt: Date
-    let fileSize: String
-    let filePath: String?
-    
-    init(type: ReportType, name: String, targetCount: Int, vulnerabilityCount: Int, criticalCount: Int, highCount: Int, generatedAt: Date, fileSize: String, filePath: String? = nil) {
-        self.type = type
-        self.name = name
-        self.targetCount = targetCount
-        self.vulnerabilityCount = vulnerabilityCount
-        self.criticalCount = criticalCount
-        self.highCount = highCount
-        self.generatedAt = generatedAt
-        self.fileSize = fileSize
-        self.filePath = filePath
+        .buttonStyle(.plain)
     }
 }
 
@@ -365,95 +379,54 @@ struct TargetSelectionView: View {
     let onToggle: (Bool) -> Void
     
     var body: some View {
-        Button(action: {
-            onToggle(!isSelected)
-        }) {
-            HStack(spacing: 8) {
+        HStack {
+            Button(action: { onToggle(!isSelected) }) {
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .foregroundColor(isSelected ? .blue : .secondary)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(target.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                    
-                    Text("\(target.vulnerabilities.count) vulnerabilities")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? Color.blue : Color.secondary.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct ReportRowView: View {
-    let report: GeneratedReport
-    let onExport: () -> Void
-    
-    var body: some View {
-        HStack {
+            .buttonStyle(.plain)
+            
             VStack(alignment: .leading, spacing: 4) {
-                Text(report.name)
+                Text(target.name)
                     .font(.headline)
-                    .fontWeight(.medium)
                 
-                Text(report.type.description)
+                Text(target.ipAddress)
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
-                
-                HStack(spacing: 12) {
-                    Label("\(report.targetCount)", systemImage: "target")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    
-                    Label("\(report.vulnerabilityCount)", systemImage: "shield")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    
-                    if report.criticalCount > 0 {
-                        Label("\(report.criticalCount)", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundColor(.red)
-                    }
-                }
             }
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 4) {
-                Button("Export") {
-                    onExport()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                
-                Text(report.generatedAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                Text(report.fileSize)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+            Text("\(target.vulnerabilities.count) vulnerabilities")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
         .padding(.vertical, 4)
     }
 }
 
+struct PDFDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.pdf] }
+    
+    var data: Data
+    
+    init(data: Data) {
+        self.data = data
+    }
+    
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+    
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        return FileWrapper(regularFileWithContents: data)
+    }
+}
+
 #Preview {
     ReportingView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }
