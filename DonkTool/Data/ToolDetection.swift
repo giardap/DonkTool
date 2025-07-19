@@ -15,8 +15,9 @@ class ToolDetection {
     }
     
     private func setupInitialToolStatus() {
-        // Based on TOOLS_STATUS.md - mark known working tools as available
+        // Based on TOOLS_STATUS.md and newly installed tools - mark known working tools as available
         let knownWorkingTools = [
+            // Core penetration testing tools
             "wrk": true,
             "feroxbuster": true, 
             "nuclei": true,
@@ -31,12 +32,25 @@ class ToolDetection {
             "gobuster": true,
             "dirb": true,
             "ffuf": true,
-            "slowhttptest": true,
             "hping3": true,
             "iperf3": true,
-            "artillery": true,
             "python3": true,
-            "curl": true
+            "curl": true,
+            
+            // Newly installed DoS testing tools
+            "slowhttptest": true,
+            "goldeneye": true,
+            "hulk": true,
+            "t50": true,
+            "thc-ssl-dos": true,
+            "artillery": true,
+            "mhddos": true,
+            "torshammer": true,
+            "pyloris": true,
+            "xerxes": true,
+            "pentmenu": true,
+            "hyenados": true,  // Maps to hyenae
+            "hyenae": true
         ]
         
         for (tool, status) in knownWorkingTools {
@@ -125,7 +139,11 @@ class ToolDetection {
         
         // Cargo/Rust tools
         "~/.cargo/bin",
-        "/Users/giardap/.cargo/bin"
+        "/Users/giardap/.cargo/bin",
+        
+        // PNPM global tools
+        "/Users/giardap/Library/pnpm",
+        "/Users/giardap/Library/pnpm/global/5/node_modules/.bin"
     ]
     
     func isToolInstalled(_ toolName: String) -> Bool {

@@ -736,8 +736,8 @@ struct AttackTypeCard: View {
             )
             .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
         }
-        .disabled(false)  // Allow selection to show why it's not available
-        .opacity(isInstalled ? 1.0 : 0.7)
+        .disabled(!isInstalled)
+        .opacity(isInstalled ? 1.0 : 0.8)
     }
 }
 
