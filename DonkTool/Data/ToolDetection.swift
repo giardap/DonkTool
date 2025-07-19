@@ -181,20 +181,32 @@ class ToolDetection {
         }
         
         let allTools = Array(toolAliases.keys)
-        var newStatus: [String: Bool] = [:]
         
-        for tool in allTools {
-            let aliases = toolAliases[tool] ?? [tool]
-            var isInstalled = false
+        // Use TaskGroup for concurrent tool checking
+        let newStatus: [String: Bool] = await withTaskGroup(of: (String, Bool).self) { group in
+            var results: [String: Bool] = [:]
             
-            for alias in aliases {
-                if checkToolExists(alias) {
-                    isInstalled = true
-                    break
+            for tool in allTools {
+                group.addTask { [tool] in
+                    let aliases = self.toolAliases[tool] ?? [tool]
+                    var isInstalled = false
+                    
+                    for alias in aliases {
+                        if self.checkToolExists(alias) {
+                            isInstalled = true
+                            break
+                        }
+                    }
+                    
+                    return (tool, isInstalled)
                 }
             }
             
-            newStatus[tool] = isInstalled
+            for await (tool, isInstalled) in group {
+                results[tool] = isInstalled
+            }
+            
+            return results
         }
         
         await MainActor.run {

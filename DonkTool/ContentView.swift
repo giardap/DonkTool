@@ -98,7 +98,9 @@ struct ModernSidebarView: View {
         switch tab {
         case .networkScanner: return appState.isNetworkScanning
         case .webTesting: return appState.isWebScanning
-        case .cveManager: return appState.cveDatabase.isLoading
+        case .vulnerabilityDatabase: return appState.cveDatabase.isLoading || ExploitDatabase.shared.isUpdating
+        case .metasploitConsole: return MetasploitManager.shared.isExecuting
+        case .osintDashboard: return OSINTModule.shared.isGathering
         default: return false
         }
     }
@@ -314,14 +316,18 @@ struct DetailView: View {
             switch appState.currentTab {
             case .dashboard:
                 ModernDashboardView()
-            case .cveManager:
-                CVEManagerView()
+            case .vulnerabilityDatabase:
+                AdvancedExploitDatabaseView()
             case .networkScanner:
                 ModernNetworkScannerView()
             case .webTesting:
                 ModernWebTestingView()
             case .dosStressTesting:
                 DoSTestingView()
+            case .metasploitConsole:
+                AdvancedMetasploitConsoleView()
+            case .osintDashboard:
+                AdvancedOSINTDashboardView()
             case .activeAttacks:
                 ActiveAttacksView()
             case .reporting:

@@ -1412,7 +1412,7 @@ class BackgroundWebTestManager {
     
     private func executeDirectoryEnumeration(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
         var output: [String] = []
-        var vulnerabilities: [String] = []
+        let vulnerabilities: [String] = []
         
         // Try gobuster first, then dirb as fallback
         if let gobusterPath = findToolPath("gobuster") {

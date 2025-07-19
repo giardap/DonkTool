@@ -1198,6 +1198,13 @@ print("HULK attack completed")
     }
     
     private func executeCommand(command: String, args: [String], duration: TimeInterval, config: DoSTestConfiguration? = nil) async -> (String, Bool) {
+        // Execute on background thread to avoid blocking UI
+        return await Task.detached { [weak self] in
+            await self?.executeCommandInternal(command: command, args: args, duration: duration, config: config) ?? ("Command execution failed", false)
+        }.value
+    }
+    
+    private func executeCommandInternal(command: String, args: [String], duration: TimeInterval, config: DoSTestConfiguration? = nil) async -> (String, Bool) {
         let process = Process()
         
         // Try to find the command in user's local bin first
@@ -1256,7 +1263,10 @@ print("HULK attack completed")
             }
             
             try process.run()
-            activeProcesses.append(process)
+            
+            await MainActor.run {
+                self.activeProcesses.append(process)
+            }
             
             // Real-time output streaming
             let outputHandle = outputPipe.fileHandleForReading
@@ -1320,17 +1330,26 @@ print("HULK attack completed")
                 }
             }
             
-            process.waitUntilExit()
-            timer.invalidate()
-            progressTimer.invalidate()
+            // Wait for process completion asynchronously to avoid blocking UI
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let timerRef = timer
+                let progressTimerRef = progressTimer
+                process.terminationHandler = { _ in
+                    timerRef.invalidate()
+                    progressTimerRef.invalidate()
+                    continuation.resume()
+                }
+            }
             
             // Clean up handlers
             outputHandle.readabilityHandler = nil
             errorHandle.readabilityHandler = nil
             
             // Remove from active processes
-            if let index = activeProcesses.firstIndex(of: process) {
-                activeProcesses.remove(at: index)
+            await MainActor.run {
+                if let index = self.activeProcesses.firstIndex(of: process) {
+                    self.activeProcesses.remove(at: index)
+                }
             }
             
             // Get any remaining output
@@ -1530,7 +1549,7 @@ print("HULK attack completed")
         
         // Parse hping3 output for packet loss, RTT, etc.
         let lines = output.components(separatedBy: .newlines)
-        let packetsTransmitted = 0
+        var packetsTransmitted = 0
         var packetsReceived = 0
         var totalRtt = 0.0
         var rttCount = 0
@@ -1547,6 +1566,12 @@ print("HULK attack completed")
                         rttCount += 1
                     }
                 }
+            } else if line.contains("packets transmitted") || line.contains("sent") {
+                // Try to extract transmitted packet count
+                let numbers = line.components(separatedBy: .whitespaces).compactMap { Int($0) }
+                if let count = numbers.first {
+                    packetsTransmitted = count
+                }
             }
         }
         
@@ -1554,7 +1579,7 @@ print("HULK attack completed")
         if rttCount > 0 {
             metrics.averageResponseTime = (totalRtt / Double(rttCount)) / 1000.0  // Convert to seconds
         }
-        metrics.successRate = packetsTransmitted > 0 ? Double(packetsReceived) / Double(packetsTransmitted) : 0.0
+        metrics.successRate = packetsTransmitted > 0 ? Double(packetsReceived) / Double(packetsTransmitted) : Double(packetsReceived > 0 ? 1.0 : 0.0)
         
         return metrics
     }
@@ -1800,6 +1825,19 @@ print("HULK attack completed")
     func clearConsole() {
         consoleOutput = ""
         currentCommand = ""
+    }
+    
+    func stopAllAttacks() {
+        for process in activeProcesses {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        activeProcesses.removeAll()
+        isRunning = false
+        currentTest = nil
+        progress = 0.0
+        consoleOutput += "\n🛑 All attacks stopped by user\n"
     }
 }
 

@@ -105,13 +105,23 @@ struct ToolRequirement: Codable {
 }
 
 struct AttackVector: Identifiable, Codable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let description: String
     let severity: Vulnerability.Severity
     let requirements: [ToolRequirement]
     let commands: [String]
     let references: [String]
+    
+    init(name: String, description: String, severity: Vulnerability.Severity, requirements: [ToolRequirement], commands: [String], references: [String]) {
+        self.id = UUID()
+        self.name = name
+        self.description = description
+        self.severity = severity
+        self.requirements = requirements
+        self.commands = commands
+        self.references = references
+    }
     
     var isExecutable: Bool {
         return requirements.allSatisfy { requirement in

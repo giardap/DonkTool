@@ -1077,9 +1077,7 @@ struct ModernNetworkScannerView: View {
                 severity: convertFromNetworkAttackVectorSeverity(vector.severity),
                 requirements: vector.tools.map { ToolRequirement(name: $0, type: .tool, description: $0) },
                 commands: vector.commands,
-                references: [],
-                attackType: determineAttackType(for: vector.name),
-                difficulty: determineDifficulty(for: vector.name)
+                references: []
             )
         }
     }

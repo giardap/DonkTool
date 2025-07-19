@@ -783,7 +783,7 @@ struct DoSTestingView: View {
     
     private func stopDoSTest() {
         isRunning = false
-        // Stop all running processes
+        dosManager.stopAllAttacks()
     }
     
     @MainActor
@@ -791,26 +791,44 @@ struct DoSTestingView: View {
         isRunning = true
         showConsole = true  // Auto-show console when starting tests
         
-        for testType in selectedTestTypes {
-            let config = DoSTestConfiguration(
-                testType: testType,
-                duration: testDuration,
-                intensity: selectedIntensity,
-                target: selectedTarget,
-                port: selectedPort,
-                protocolType: selectedProtocol,
-                customParameters: [:],
-                authorizationConfirmed: authorizationConfirmed,
-                ethicalUseAgreed: ethicalUseAgreed
-            )
+        // Execute tests on background task to avoid blocking UI
+        await Task.detached {
+            let selectedTypes = await self.selectedTestTypes
+            let duration = await self.testDuration
+            let intensity = await self.selectedIntensity
+            let target = await self.selectedTarget
+            let port = await self.selectedPort
+            let protocolType = await self.selectedProtocol
+            let authConfirmed = await self.authorizationConfirmed
+            let ethicalAgreed = await self.ethicalUseAgreed
+            let manager = await self.dosManager
             
-            guard config.isValid else { continue }
+            for testType in selectedTypes {
+                let config = DoSTestConfiguration(
+                    testType: testType,
+                    duration: duration,
+                    intensity: intensity,
+                    target: target,
+                    port: port,
+                    protocolType: protocolType,
+                    customParameters: [:],
+                    authorizationConfirmed: authConfirmed,
+                    ethicalUseAgreed: ethicalAgreed
+                )
+                
+                guard config.isValid else { continue }
+                
+                let result = await manager.executeTest(config: config)
+                
+                await MainActor.run {
+                    self.testResults.append(result)
+                }
+            }
             
-            let result = await dosManager.executeTest(config: config)
-            testResults.append(result)
-        }
-        
-        isRunning = false
+            await MainActor.run {
+                self.isRunning = false
+            }
+        }.value
     }
 }
 

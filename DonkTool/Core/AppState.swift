@@ -117,10 +117,12 @@ class AppState {
     
     enum MainTab: CaseIterable, Hashable {
         case dashboard
-        case cveManager
+        case vulnerabilityDatabase
         case networkScanner
         case webTesting
         case dosStressTesting
+        case metasploitConsole
+        case osintDashboard
         case activeAttacks
         case reporting
         case settings
@@ -128,10 +130,12 @@ class AppState {
         var title: String {
             switch self {
             case .dashboard: return "Dashboard"
-            case .cveManager: return "CVE Manager"
+            case .vulnerabilityDatabase: return "Vulnerability Database"
             case .networkScanner: return "Network Scanner"
             case .webTesting: return "Web Testing"
             case .dosStressTesting: return "DoS/Stress Testing"
+            case .metasploitConsole: return "Metasploit Console"
+            case .osintDashboard: return "OSINT Dashboard"
             case .activeAttacks: return "Active Attacks"
             case .reporting: return "Reporting"
             case .settings: return "Settings"
@@ -141,10 +145,12 @@ class AppState {
         var systemImage: String {
             switch self {
             case .dashboard: return "gauge"
-            case .cveManager: return "shield.checkerboard"
+            case .vulnerabilityDatabase: return "shield.checkerboard"
             case .networkScanner: return "network"
             case .webTesting: return "globe"
             case .dosStressTesting: return "exclamationmark.triangle.fill"
+            case .metasploitConsole: return "terminal.fill"
+            case .osintDashboard: return "binoculars.fill"
             case .activeAttacks: return "bolt.badge.clock"
             case .reporting: return "doc.text"
             case .settings: return "gear"
