@@ -224,8 +224,11 @@ class AppState {
 }
 
 
-// MARK: - Mock Data Extensions
+// MARK: - Development & Preview Mock Data Extensions
+// These mock extensions are for SwiftUI previews and development testing only
+// They should NOT be used for actual security testing or production data
 
+#if DEBUG
 extension Vulnerability {
     static var mock: Vulnerability {
         Vulnerability(
@@ -292,3 +295,4 @@ extension NetworkAttackVector {
         NetworkAttackVector(name: "SSH Brute Force", description: "Default credentials for SSH.", severity: .high, tools: ["hydra", "nmap"], commands: ["hydra -l root -P /path/to/passwords.txt ssh://<TARGET>"])
     }
 }
+#endif

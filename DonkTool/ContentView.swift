@@ -57,7 +57,7 @@ struct ModernSidebarView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
             }
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(Color.surfaceBackground)
             
             Divider()
             
@@ -91,7 +91,7 @@ struct ModernSidebarView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Color.primaryBackground)
     }
     
     private func hasActivity(for tab: AppState.MainTab) -> Bool {
@@ -172,7 +172,7 @@ struct CompactActiveScansCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.05))
+        .background(Color.warningBackground)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -229,7 +229,7 @@ struct CompactStatsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.gray.opacity(0.05))
+        .background(Color.cardBackground)
         .cornerRadius(6)
     }
 }
@@ -284,7 +284,7 @@ struct ScanBadge: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(color.opacity(0.1))
+        .background(color.opacity(0.15))
         .foregroundColor(color)
         .cornerRadius(8)
     }
@@ -327,7 +327,7 @@ struct DetailView: View {
             case .metasploitConsole:
                 AdvancedMetasploitConsoleView()
             case .osintDashboard:
-                AdvancedOSINTDashboardView()
+                FunctionalOSINTDashboard()
             case .activeAttacks:
                 ActiveAttacksView()
             case .reporting:
@@ -337,7 +337,7 @@ struct DetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Color.primaryBackground)
     }
 }
 

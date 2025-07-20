@@ -1272,18 +1272,17 @@ print("HULK attack completed")
             let outputHandle = outputPipe.fileHandleForReading
             let errorHandle = errorPipe.fileHandleForReading
             
-            // Setup real-time output monitoring
+            // Setup real-time output monitoring - show raw tool output
             outputHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
                     if let str = String(data: data, encoding: .utf8) {
-                        let outputLine = "📊 LIVE OUTPUT: \(str.trimmingCharacters(in: .whitespacesAndNewlines))"
-                        print(outputLine)
+                        print("Tool Output: \(str)")
                         outputQueue.sync {
                             output += str
                         }
                         Task { @MainActor in
-                            self.consoleOutput += outputLine + "\n"
+                            self.consoleOutput += str
                         }
                     }
                 }
@@ -1293,13 +1292,12 @@ print("HULK attack completed")
                 let data = handle.availableData
                 if !data.isEmpty {
                     if let str = String(data: data, encoding: .utf8) {
-                        let errorLine = "⚠️ ERROR OUTPUT: \(str.trimmingCharacters(in: .whitespacesAndNewlines))"
-                        print(errorLine)
+                        print("Tool Error: \(str)")
                         outputQueue.sync {
-                            output += "\n--- STDERR ---\n" + str
+                            output += str
                         }
                         Task { @MainActor in
-                            self.consoleOutput += errorLine + "\n"
+                            self.consoleOutput += str
                         }
                     }
                 }
@@ -1315,28 +1313,23 @@ print("HULK attack completed")
                 }
             }
             
-            // Detailed progress updates every second
+            // Update progress silently without cluttering console
             let progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 let elapsed = Date().timeIntervalSince(startTime)
                 let progressValue = min(elapsed / duration, 1.0)
-                let remainingTime = max(0, duration - elapsed)
-                
-                let progressLine = "⚡ ATTACK PROGRESS: \(String(format: "%.1f", elapsed))s elapsed | \(String(format: "%.1f", remainingTime))s remaining | \(String(format: "%.1f", progressValue * 100))% complete"
-                print(progressLine)
                 
                 Task { @MainActor in
                     self.progress = progressValue
-                    self.consoleOutput += progressLine + "\n"
                 }
             }
             
             // Wait for process completion asynchronously to avoid blocking UI
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                let timerRef = timer
-                let progressTimerRef = progressTimer
                 process.terminationHandler = { _ in
-                    timerRef.invalidate()
-                    progressTimerRef.invalidate()
+                    Task { @MainActor in
+                        timer.invalidate()
+                        progressTimer.invalidate()
+                    }
                     continuation.resume()
                 }
             }
@@ -1471,28 +1464,28 @@ print("HULK attack completed")
         )
     }
     
-    private func createPlaceholderResult(config: DoSTestConfiguration, startTime: Date, message: String) -> DoSTestResult {
+    private func createErrorResult(config: DoSTestConfiguration, startTime: Date, message: String) -> DoSTestResult {
         return DoSTestResult(
             testType: config.testType,
             target: config.target,
             startTime: startTime,
             duration: Date().timeIntervalSince(startTime),
             authorized: config.authorizationConfirmed,
-            requestsPerSecond: config.intensity.requestsPerSecond,
-            concurrentConnections: config.intensity.threadCount,
-            averageResponseTime: Double.random(in: 0.1...2.0),
-            successRate: Double.random(in: 0.7...0.95),
-            vulnerabilityDetected: Bool.random(),
-            mitigationSuggestions: generateMitigationSuggestions(for: config.testType, metrics: TestMetrics()),
+            requestsPerSecond: nil,
+            concurrentConnections: nil,
+            averageResponseTime: nil,
+            successRate: nil,
+            vulnerabilityDetected: false,
+            mitigationSuggestions: ["Unable to complete test - check tool installation and target accessibility"],
             packetsTransmitted: nil,
             bytesTransferred: nil,
-            errorRate: Double.random(in: 0.05...0.3),
-            serverResponseCodes: ["200": 70, "500": 20, "503": 10],
-            networkLatency: Double.random(in: 0.1...2.0),
+            errorRate: nil,
+            serverResponseCodes: nil,
+            networkLatency: nil,
             memoryUsage: nil,
             cpuUsage: nil,
             toolOutput: message,
-            riskAssessment: .moderate
+            riskAssessment: .minimal
         )
     }
     

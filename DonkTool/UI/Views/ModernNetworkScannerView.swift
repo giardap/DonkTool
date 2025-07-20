@@ -68,7 +68,7 @@ struct ModernNetworkScannerView: View {
                 }
                 .frame(minWidth: 280, maxWidth: 350)
                 .padding(24)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(Color.cardBackground)
                 
                 // Right panel - cleaner results
                 CleanResultsPanel()
@@ -128,7 +128,11 @@ struct ModernNetworkScannerView: View {
                     .progressViewStyle(LinearProgressViewStyle(tint: .blue))
             }
             .padding(16)
-            .background(Color.blue.opacity(0.05))
+            .background(Color.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: .radius_lg)
+                    .stroke(Color.borderPrimary.opacity(0.2), lineWidth: 1)
+            )
             .overlay(
                 Rectangle()
                     .frame(height: 1)
@@ -273,7 +277,7 @@ struct ModernNetworkScannerView: View {
                 CleanResultsList()
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Color.primaryBackground)
     }
     
     @ViewBuilder
@@ -1225,8 +1229,16 @@ struct CleanPortResultRow: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovering ? Color.gray.opacity(0.05) : Color.clear)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    isHovering ? 
+                    Color.cardBackground.opacity(0.8) : 
+                    Color.cardBackground.opacity(0.4)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.borderPrimary.opacity(0.2), lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -1299,7 +1311,7 @@ struct CleanPortDetailView: View {
                                 .font(.body)
                                 .fontDesign(.monospaced)
                                 .padding()
-                                .background(Color.gray.opacity(0.1))
+                                .background(Color.cardBackground.opacity(0.6))
                                 .cornerRadius(8)
                                 .textSelection(.enabled)
                         }
@@ -1373,7 +1385,7 @@ struct CleanAttackVectorRow: View {
                             .fontDesign(.monospaced)
                             .textSelection(.enabled)
                             .padding(8)
-                            .background(Color.gray.opacity(0.1))
+                            .background(Color.cardBackground.opacity(0.6))
                             .cornerRadius(4)
                     }
                     
@@ -1394,7 +1406,11 @@ struct CleanAttackVectorRow: View {
             }
         }
         .padding(12)
-        .background(Color.gray.opacity(0.05))
+        .background(Color.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.borderPrimary.opacity(0.2), lineWidth: 1)
+        )
         .cornerRadius(8)
         .sheet(isPresented: $showingAttackExecution) {
             AttackExecutionView(attackVector: vector, target: targetIP, port: port)

@@ -102,7 +102,7 @@ struct StatsCardView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
 }
@@ -133,7 +133,7 @@ struct ScanResultRowView: View {
                 .cornerRadius(8)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(8)
     }
     

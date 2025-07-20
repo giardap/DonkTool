@@ -55,8 +55,7 @@ struct AdvancedMetasploitConsoleView: View {
         HStack {
             VStack(alignment: .leading) {
                 Text("Metasploit Console")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                    .font(.headerPrimary)
                 
                 HStack {
                     Circle()
@@ -64,7 +63,7 @@ struct AdvancedMetasploitConsoleView: View {
                         .frame(width: 8, height: 8)
                     
                     Text(msfConsole.isConnected ? "Connected" : "Disconnected")
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.secondary)
                     
                     if msfConsole.isConnecting {
@@ -80,9 +79,9 @@ struct AdvancedMetasploitConsoleView: View {
                 Label(msfConsole.isConnected ? "Disconnect" : "Connect", 
                       systemImage: msfConsole.isConnected ? "stop.circle" : "play.circle")
             }
-            .buttonStyle(.bordered)
+            .secondaryButton()
         }
-        .padding()
+        .standardContainer()
     }
     
     private var consoleTab: some View {
@@ -91,9 +90,9 @@ struct AdvancedMetasploitConsoleView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     Text(msfConsole.consoleOutput)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.codePrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                        .standardContainer()
                         .id("bottom")
                 }
                 .background(Color.black.opacity(0.9))
@@ -108,12 +107,12 @@ struct AdvancedMetasploitConsoleView: View {
             // Command Input
             HStack {
                 Text("msf6 >")
-                    .font(.system(.body, design: .monospaced))
+                    .font(.codePrimary)
                     .foregroundColor(.green)
                 
                 TextField("Enter command...", text: $commandInput)
                     .textFieldStyle(PlainTextFieldStyle())
-                    .font(.system(.body, design: .monospaced))
+                    .font(.codePrimary)
                     .onSubmit {
                         executeCommand()
                     }
@@ -123,7 +122,7 @@ struct AdvancedMetasploitConsoleView: View {
                 }
                 .disabled(!msfConsole.isConnected || commandInput.isEmpty)
             }
-            .padding()
+            .standardContainer()
             .background(Color.gray.opacity(0.1))
         }
     }
@@ -140,7 +139,7 @@ struct AdvancedMetasploitConsoleView: View {
                 }
                 .disabled(!msfConsole.isConnected)
             }
-            .padding()
+            .standardContainer()
             
             // Module List
             if msfConsole.searchResults.isEmpty {
@@ -149,6 +148,7 @@ struct AdvancedMetasploitConsoleView: View {
                         .font(.largeTitle)
                         .foregroundColor(.secondary)
                     Text("Search for Metasploit modules")
+                        .font(.bodyPrimary)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -171,10 +171,10 @@ struct AdvancedMetasploitConsoleView: View {
                         .font(.largeTitle)
                         .foregroundColor(.secondary)
                     Text("No active sessions")
-                        .font(.headline)
+                        .font(.headerSecondary)
                         .foregroundColor(.secondary)
                     Text("Run exploits to create sessions")
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -200,7 +200,7 @@ struct AdvancedMetasploitConsoleView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            .padding()
+            .standardContainer()
             
             // Quick payload templates
             ScrollView {
@@ -511,7 +511,7 @@ struct ModuleRow: View {
         HStack {
             VStack(alignment: .leading) {
                 Text(module.fullPath)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.codePrimary)
                 
                 Text(module.name)
                     .font(.caption)
@@ -531,7 +531,7 @@ struct ModuleRow: View {
             Button("Use") {
                 onUse()
             }
-            .buttonStyle(.bordered)
+            .secondaryButton()
             .controlSize(.small)
         }
         .padding(.vertical, 4)
@@ -575,13 +575,13 @@ struct SessionRow: View {
             Button("Interact") {
                 console.executeCommand("sessions -i \(session.id)")
             }
-            .buttonStyle(.bordered)
+            .secondaryButton()
             .controlSize(.small)
             
             Button("Kill") {
                 console.executeCommand("sessions -k \(session.id)")
             }
-            .buttonStyle(.bordered)
+            .secondaryButton()
             .controlSize(.small)
             .foregroundColor(.red)
         }
@@ -611,11 +611,11 @@ struct PayloadTemplateCard: View {
                 Button("Generate") {
                     onGenerate()
                 }
-                .buttonStyle(.bordered)
+                .secondaryButton()
                 .controlSize(.small)
             }
         }
-        .padding()
+        .standardContainer()
         .background(Color.gray.opacity(0.05))
         .cornerRadius(8)
     }
@@ -667,7 +667,7 @@ struct PayloadGeneratorSheet: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding()
+        .standardContainer()
         .frame(width: 500)
     }
     

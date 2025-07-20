@@ -17,8 +17,7 @@ struct WebTestingView: View {
             VStack(spacing: 16) {
                 HStack {
                     Text("Web Application Scanner")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                        .font(.headerPrimary)
                     
                     Spacer()
                     
@@ -28,7 +27,7 @@ struct WebTestingView: View {
                             ProgressView()
                                 .scaleEffect(0.8)
                             Text("Scanning \(appState.currentWebTarget)...")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -37,7 +36,7 @@ struct WebTestingView: View {
                 // Target URL input
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Target URL")
-                        .font(.headline)
+                        .font(.headerSecondary)
                     
                     HStack {
                         TextField("https://example.com", text: $targetURL)
@@ -48,7 +47,7 @@ struct WebTestingView: View {
                             Button("Stop Scan") {
                                 appState.stopWebScan()
                             }
-                            .buttonStyle(.bordered)
+                            .secondaryButton()
                         } else {
                             Button(action: startWebScan) {
                                 HStack {
@@ -58,7 +57,7 @@ struct WebTestingView: View {
                                 .frame(minWidth: 120)
                             }
                             .disabled(targetURL.isEmpty)
-                            .buttonStyle(.borderedProminent)
+                            .primaryButton()
                         }
                     }
                 }
@@ -70,7 +69,7 @@ struct WebTestingView: View {
                 }
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .standardContainer()
             
             Divider()
             
@@ -78,14 +77,13 @@ struct WebTestingView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("Scan Results")
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                        .font(.headerSecondary)
                     
                     Spacer()
                     
                     if !appState.webScanResults.isEmpty {
                         Text("\(appState.webScanResults.count) findings")
-                            .font(.caption)
+                            .font(.captionPrimary)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -122,31 +120,33 @@ struct WebScanResultRowView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(result.type)
-                    .font(.headline)
-                    .fontWeight(.medium)
+                    .font(.headerTertiary)
                 
                 Spacer()
                 
                 Text(result.severity.rawValue)
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(result.severity.color.opacity(0.8))
-                    .foregroundColor(.white)
-                    .cornerRadius(4)
+                    .statusIndicator(getSeverityStatus(result.severity))
             }
             
             Text(result.description)
-                .font(.body)
+                .font(.bodyPrimary)
                 .foregroundColor(.primary)
             
             Text(result.url)
-                .font(.caption)
+                .font(.captionPrimary)
                 .foregroundColor(.blue)
                 .lineLimit(1)
         }
         .padding(.vertical, 8)
+    }
+    
+    private func getSeverityStatus(_ severity: WebScanResult.Severity) -> StatusIndicator.StatusType {
+        switch severity {
+        case .high: return .danger
+        case .medium: return .warning
+        case .low: return .success
+        case .informational: return .info
+        }
     }
 }
 

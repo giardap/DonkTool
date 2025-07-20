@@ -142,10 +142,10 @@ struct AdvancedOSINTDashboardView: View {
                                     
                                     Text("\(osint.findings.count) total")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(.primary)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
-                                        .background(Color.gray.opacity(0.2))
+                                        .background(Color.blue.opacity(0.2))
                                         .cornerRadius(6)
                                 }
                                 
@@ -182,7 +182,7 @@ struct AdvancedOSINTDashboardView: View {
                                                 .cornerRadius(4)
                                         }
                                         .padding(12)
-                                        .background(Color.white.opacity(0.8))
+                                        .background(Color(NSColor.controlBackgroundColor))
                                         .cornerRadius(8)
                                     }
                                 }
@@ -371,10 +371,10 @@ struct AdvancedOSINTDashboardView: View {
                 
                 Text("\(selectedSources.count) selected")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.primary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.1))
+                    .background(Color.blue.opacity(0.2))
                     .cornerRadius(6)
             }
             
@@ -402,30 +402,30 @@ struct AdvancedOSINTDashboardView: View {
             VStack(spacing: 8) {
                 Image(systemName: source.icon)
                     .font(.title2)
-                    .foregroundColor(selectedSources.contains(source) ? .blue : .secondary)
+                    .foregroundColor(selectedSources.contains(source) ? .white : .primary)
                 
                 Text(source.rawValue)
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(selectedSources.contains(source) ? .primary : .secondary)
+                    .foregroundColor(selectedSources.contains(source) ? .white : .primary)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 70)
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(selectedSources.contains(source) ? Color.blue.opacity(0.15) : Color.white.opacity(0.8))
+                    .fill(selectedSources.contains(source) ? Color.blue : Color(NSColor.controlBackgroundColor))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        selectedSources.contains(source) ? Color.blue : Color.gray.opacity(0.3),
+                        selectedSources.contains(source) ? Color.blue.opacity(0.8) : Color.gray.opacity(0.4),
                         lineWidth: selectedSources.contains(source) ? 2 : 1
                     )
             )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -506,30 +506,30 @@ struct AdvancedOSINTDashboardView: View {
             VStack(spacing: 8) {
                 Image(systemName: searchType.icon)
                     .font(.title2)
-                    .foregroundColor(selectedSearchType == searchType ? .blue : .secondary)
+                    .foregroundColor(selectedSearchType == searchType ? .white : .primary)
                 
                 Text(searchType.rawValue)
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(selectedSearchType == searchType ? .primary : .secondary)
+                    .foregroundColor(selectedSearchType == searchType ? .white : .primary)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 70)
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(selectedSearchType == searchType ? Color.blue.opacity(0.15) : Color.white.opacity(0.8))
+                    .fill(selectedSearchType == searchType ? Color.blue : Color(NSColor.controlBackgroundColor))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        selectedSearchType == searchType ? Color.blue : Color.gray.opacity(0.3),
+                        selectedSearchType == searchType ? Color.blue.opacity(0.8) : Color.gray.opacity(0.4),
                         lineWidth: selectedSearchType == searchType ? 2 : 1
                     )
             )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -49,11 +49,10 @@ struct ActiveAttacksView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Active Attacks")
-                        .font(.title2)
-                        .fontWeight(.bold)
+                        .font(.headerPrimary)
                     
                     Text("\(appState.attackFramework.activeSessions.count) running")
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.secondary)
                 }
                 
@@ -62,18 +61,13 @@ struct ActiveAttacksView: View {
                 Button("Refresh") {
                     // Force refresh
                 }
-                .buttonStyle(.bordered)
+                .secondaryButton()
                 .controlSize(.small)
             }
         }
-        .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color(NSColor.separatorColor)),
-            alignment: .bottom
-        )
+        .standardContainer()
+        
+        Divider()
     }
     
     @ViewBuilder
@@ -88,11 +82,10 @@ struct ActiveAttacksView: View {
             
             VStack(spacing: 8) {
                 Text("No Active Attacks")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(.headerSecondary)
                 
                 Text("Execute attacks from the Network Scanner to see them here")
-                    .font(.body)
+                    .font(.bodyPrimary)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -100,7 +93,7 @@ struct ActiveAttacksView: View {
             Button("Go to Network Scanner") {
                 appState.currentTab = .networkScanner
             }
-            .buttonStyle(.borderedProminent)
+            .primaryButton()
             
             Spacer()
         }
@@ -121,10 +114,9 @@ struct ActiveAttackCard: View {
                 AttackCardExpandedContent(session: session)
             }
         }
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
+        .cardStyle()
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: .radius_lg)
                 .stroke(statusColor.opacity(0.3), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.3), value: isExpanded)
@@ -154,11 +146,10 @@ struct AttackCardHeader: View {
             // Attack info
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.attackName)
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.headerTertiary)
                 
                 Text("Target: \(session.target):\(session.port)")
-                    .font(.caption)
+                    .font(.captionPrimary)
                     .foregroundColor(.secondary)
             }
             
@@ -166,19 +157,18 @@ struct AttackCardHeader: View {
             
             // Duration
             Text(formatDuration(Date().timeIntervalSince(session.startTime)))
-                .font(.caption)
+                .font(.codeSmall)
                 .foregroundColor(.secondary)
-                .monospacedDigit()
             
             // Expand button
             Button(action: { isExpanded.toggle() }) {
                 Image(systemName: "chevron.down")
-                    .font(.caption)
+                    .font(.captionPrimary)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
             }
             .buttonStyle(.plain)
         }
-        .padding(16)
+        .padding(.spacing_md)
     }
     
     private var statusColor: Color {
@@ -213,19 +203,18 @@ struct AttackCardExpandedContent: View {
             // Attack details
             VStack(alignment: .leading, spacing: 8) {
                 Text("Attack Details")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(.headerTertiary)
                 
                 HStack {
                     Text("Status:")
-                        .fontWeight(.medium)
+                        .font(.bodySecondary)
                     Text(session.status.rawValue.capitalized)
                         .foregroundColor(statusColor)
                 }
                 
                 HStack {
                     Text("Started:")
-                        .fontWeight(.medium)
+                        .font(.bodySecondary)
                     Text(session.startTime, style: .time)
                         .foregroundColor(.secondary)
                 }
@@ -233,7 +222,7 @@ struct AttackCardExpandedContent: View {
                 if session.status == .completed || session.status == .failed {
                     HStack {
                         Text("Duration:")
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Text(formatDuration(Date().timeIntervalSince(session.startTime)))
                             .foregroundColor(.secondary)
                     }
@@ -244,14 +233,13 @@ struct AttackCardExpandedContent: View {
             if !session.outputLines.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Console Output")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.headerTertiary)
                     
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(session.outputLines.suffix(10), id: \.self) { line in
                                 Text(line)
-                                    .font(.system(.caption, design: .monospaced))
+                                    .font(.codeSmall)
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -264,7 +252,7 @@ struct AttackCardExpandedContent: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.spacing_md)
         .padding(.top, 0)
     }
     

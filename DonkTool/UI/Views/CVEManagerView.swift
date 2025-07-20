@@ -82,7 +82,7 @@ struct CVEManagerView: View {
                 }
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(Color.cardBackground)
             
             Divider()
             

@@ -88,7 +88,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .overlay(
             Rectangle()
                 .frame(height: 1)
@@ -124,7 +124,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
     
@@ -157,7 +157,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
     
@@ -203,7 +203,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
     
@@ -275,7 +275,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
     

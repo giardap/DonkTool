@@ -206,7 +206,7 @@ struct MetricCard: View {
             }
         }
         .padding(16)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -280,20 +280,21 @@ struct VulnerabilityDistributionChart: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(16)
     }
 }
 
 struct ScanActivityChart: View {
-    let mockData = [
-        ChartData(category: "Mon", value: 12, color: .blue),
-        ChartData(category: "Tue", value: 8, color: .blue),
-        ChartData(category: "Wed", value: 15, color: .blue),
-        ChartData(category: "Thu", value: 6, color: .blue),
-        ChartData(category: "Fri", value: 19, color: .blue),
-        ChartData(category: "Sat", value: 3, color: .blue),
-        ChartData(category: "Sun", value: 7, color: .blue)
+    // TODO: Replace with real scan activity data from AppState
+    let placeholderData = [
+        ChartData(category: "Mon", value: 0, color: .blue),
+        ChartData(category: "Tue", value: 0, color: .blue),
+        ChartData(category: "Wed", value: 0, color: .blue),
+        ChartData(category: "Thu", value: 0, color: .blue),
+        ChartData(category: "Fri", value: 0, color: .blue),
+        ChartData(category: "Sat", value: 0, color: .blue),
+        ChartData(category: "Sun", value: 0, color: .blue)
     ]
     
     var body: some View {
@@ -302,7 +303,7 @@ struct ScanActivityChart: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            Chart(mockData, id: \.category) { item in
+            Chart(placeholderData, id: \.category) { item in
                 BarMark(
                     x: .value("Day", item.category),
                     y: .value("Scans", item.value)
@@ -316,7 +317,7 @@ struct ScanActivityChart: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(16)
     }
 }
@@ -357,7 +358,7 @@ struct RecentActivityCard: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(16)
     }
 }
@@ -479,7 +480,7 @@ struct VulnerabilitiesCard: View {
             }
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(16)
     }
 }
@@ -597,7 +598,7 @@ struct ScanProgressCard: View {
             }
         }
         .padding(16)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.cardBackground)
         .cornerRadius(12)
     }
 }

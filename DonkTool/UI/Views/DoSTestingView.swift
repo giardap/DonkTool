@@ -58,10 +58,10 @@ struct DoSTestingView: View {
                     resultsSection
                 }
             }
-            .padding(24)
+            .padding(.spacing_lg)
         }
         .navigationTitle("DoS/Stress Testing")
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color.primaryBackground)
         .preferredColorScheme(.dark)
         .onAppear {
             // Simple tool status refresh without forcing updates
@@ -99,13 +99,12 @@ struct DoSTestingView: View {
                     .foregroundColor(.red)
                     .font(.title2)
                 Text("AUTHORIZED USE ONLY")
-                    .font(.headline)
-                    .fontWeight(.bold)
+                    .font(.headerSecondary)
                     .foregroundColor(.red)
             }
             
             Text("DoS testing tools are for defensive security assessment only. Use requires:")
-                .font(.subheadline)
+                .font(.bodySecondary)
                 .foregroundColor(.secondary)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -113,24 +112,24 @@ struct DoSTestingView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text("Written authorization from system owner")
-                        .font(.caption)
+                        .font(.captionPrimary)
                 }
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text("Approved testing timeframe and scope")
-                        .font(.caption)
+                        .font(.captionPrimary)
                 }
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text("Incident response procedures in place")
-                        .font(.caption)
+                        .font(.captionPrimary)
                 }
             }
             
             Text("Unauthorized DoS attacks are illegal and can result in criminal charges.")
-                .font(.caption)
+                .font(.captionPrimary)
                 .foregroundColor(.red)
                 .fontWeight(.semibold)
         }
@@ -150,8 +149,7 @@ struct DoSTestingView: View {
                     .foregroundColor(.blue)
                     .font(.title3)
                 Text("Target Configuration")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.headerSecondary)
                 Spacer()
             }
             
@@ -159,11 +157,10 @@ struct DoSTestingView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Target Host:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         TextField("IP Address or Domain", text: $selectedTarget)
                             .textFieldStyle(.roundedBorder)
-                            .background(Color(NSColor.controlBackgroundColor))
+                            .background(Color.cardBackground)
                             .cornerRadius(8)
                     }
                     
@@ -171,11 +168,10 @@ struct DoSTestingView: View {
                     
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Port:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         TextField("Port", value: $selectedPort, format: .number)
                             .textFieldStyle(.roundedBorder)
-                            .background(Color(NSColor.controlBackgroundColor))
+                            .background(Color.cardBackground)
                             .cornerRadius(8)
                             .frame(width: 80)
                     }
@@ -184,8 +180,7 @@ struct DoSTestingView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Protocol:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Picker("Protocol", selection: $selectedProtocol) {
                             ForEach(NetworkProtocolType.allCases, id: \.self) { protocolType in
                                 Text(protocolType.rawValue).tag(protocolType)
@@ -201,9 +196,7 @@ struct DoSTestingView: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .cornerRadius(12)
+        .cardStyle()
     }
     
     private var testConfigurationSection: some View {
@@ -213,8 +206,7 @@ struct DoSTestingView: View {
                     .foregroundColor(.green)
                     .font(.title3)
                 Text("Test Configuration")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.headerSecondary)
                 Spacer()
             }
             
@@ -222,8 +214,7 @@ struct DoSTestingView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Intensity Level:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Picker("Intensity", selection: $selectedIntensity) {
                             ForEach(DoSIntensity.allCases, id: \.self) { intensity in
                                 Text(intensity.rawValue).tag(intensity)
@@ -236,10 +227,10 @@ struct DoSTestingView: View {
                     
                     VStack(alignment: .trailing, spacing: 4) {
                         Text(selectedIntensity.description)
-                            .font(.caption)
+                            .font(.captionPrimary)
                             .foregroundColor(.secondary)
                         Text("\(selectedIntensity.threadCount) threads, \(selectedIntensity.requestsPerSecond) req/s")
-                            .font(.caption2)
+                            .font(.captionSecondary)
                             .foregroundColor(selectedIntensity.color)
                             .fontWeight(.medium)
                     }
@@ -248,11 +239,10 @@ struct DoSTestingView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Duration:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Spacer()
                         Text("\(Int(testDuration)) seconds")
-                            .font(.subheadline)
+                            .font(.bodySecondary)
                             .foregroundColor(.secondary)
                     }
                     
@@ -265,16 +255,14 @@ struct DoSTestingView: View {
                             Image(systemName: "exclamationmark.triangle")
                                 .foregroundColor(.orange)
                             Text("Long duration tests may cause service disruption")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.orange)
                         }
                     }
                 }
             }
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .cornerRadius(12)
+        .cardStyle()
     }
     
     private var attackSelectionSection: some View {
@@ -284,8 +272,7 @@ struct DoSTestingView: View {
                     .foregroundColor(.orange)
                     .font(.title3)
                 Text("Attack Vector Selection")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.headerSecondary)
                 
                 Spacer()
                 
@@ -298,7 +285,7 @@ struct DoSTestingView: View {
                         Image(systemName: "arrow.clockwise")
                         Text("Refresh Tools")
                     }
-                    .font(.caption)
+                    .font(.captionPrimary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.blue.opacity(0.2))
@@ -307,7 +294,7 @@ struct DoSTestingView: View {
                 }
                 
                 Text("\(selectedTestTypes.count) selected")
-                    .font(.caption)
+                    .font(.captionPrimary)
                     .foregroundColor(.secondary)
             }
             
@@ -317,7 +304,7 @@ struct DoSTestingView: View {
                     .foregroundColor(.secondary)
                 TextField("Search attack vectors...", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(Color.cardBackground)
                     .cornerRadius(8)
             }
             
@@ -337,7 +324,7 @@ struct DoSTestingView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(selectedCategory == nil ? Color.blue : Color(NSColor.controlBackgroundColor).opacity(0.6))
+                        .background(selectedCategory == nil ? Color.blue : Color.cardBackground.opacity(0.6))
                         .foregroundColor(selectedCategory == nil ? .white : .primary)
                         .cornerRadius(8)
                     }
@@ -355,7 +342,7 @@ struct DoSTestingView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(selectedCategory == category ? category.color : Color(NSColor.controlBackgroundColor).opacity(0.6))
+                            .background(selectedCategory == category ? category.color : Color.cardBackground.opacity(0.6))
                             .foregroundColor(selectedCategory == category ? .white : .primary)
                             .cornerRadius(8)
                         }
@@ -372,14 +359,14 @@ struct DoSTestingView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.orange)
                     Text("No attack vectors found")
-                        .font(.headline)
+                        .font(.headerSecondary)
                     Text("Try adjusting your search or category filter")
-                        .font(.subheadline)
+                        .font(.bodySecondary)
                         .foregroundColor(.secondary)
                 }
                 .padding(40)
                 .frame(maxWidth: .infinity)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                .background(Color.cardBackground)
                 .cornerRadius(12)
             } else {
                 LazyVGrid(
@@ -402,9 +389,7 @@ struct DoSTestingView: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .cornerRadius(12)
+        .cardStyle()
     }
     
     private var authorizationSection: some View {
@@ -414,8 +399,7 @@ struct DoSTestingView: View {
                     .foregroundColor(.red)
                     .font(.title3)
                 Text("Legal Authorization")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.headerSecondary)
                     .foregroundColor(.red)
             }
             
@@ -423,10 +407,9 @@ struct DoSTestingView: View {
                 Toggle(isOn: $ethicalUseAgreed) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("I agree to use these tools ethically and legally")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Text("Following responsible disclosure and professional standards")
-                            .font(.caption)
+                            .font(.captionPrimary)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -434,10 +417,9 @@ struct DoSTestingView: View {
                 Toggle(isOn: $authorizationConfirmed) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("I have written authorization to test this target")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                         Text("Explicit permission from system owner with defined scope")
-                            .font(.caption)
+                            .font(.captionPrimary)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -448,7 +430,7 @@ struct DoSTestingView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.red)
                     Text("Complete authorization requirements before testing")
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.red)
                         .fontWeight(.medium)
                 }
@@ -460,7 +442,7 @@ struct DoSTestingView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text("Authorization confirmed - ready for testing")
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.green)
                         .fontWeight(.medium)
                 }
@@ -486,29 +468,28 @@ struct DoSTestingView: View {
                         Image(systemName: "info.circle")
                             .foregroundColor(.orange)
                         Text("Complete all requirements before testing:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.bodySecondary)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         if selectedTarget.isEmpty {
                             Text("• Enter target host")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.secondary)
                         }
                         if selectedTestTypes.isEmpty {
                             Text("• Select at least one attack vector")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.secondary)
                         }
                         if !authorizationConfirmed {
                             Text("• Confirm written authorization")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.secondary)
                         }
                         if !ethicalUseAgreed {
                             Text("• Agree to ethical use policy")
-                                .font(.caption)
+                                .font(.captionPrimary)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -529,9 +510,8 @@ struct DoSTestingView: View {
                                 Image(systemName: "play.fill")
                             }
                             Text(isRunning ? "Testing in Progress..." : "Start DoS Test")
-                                .fontWeight(.semibold)
+                                .font(.headerTertiary)
                         }
-                        .font(.headline)
                         .foregroundColor(.white)
                         .padding(.vertical, 12)
                         .padding(.horizontal, 24)
@@ -546,7 +526,7 @@ struct DoSTestingView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "stop.fill")
                                 Text("Stop Test")
-                                    .fontWeight(.semibold)
+                                    .font(.headerTertiary)
                             }
                             .font(.headline)
                             .foregroundColor(.white)
@@ -706,9 +686,7 @@ struct DoSTestingView: View {
                 )
             }
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .cornerRadius(12)
+        .cardStyle()
     }
     
     private var resultsSection: some View {
@@ -726,9 +704,7 @@ struct DoSTestingView: View {
             }
             .frame(maxHeight: 400)
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .cornerRadius(12)
+        .cardStyle()
     }
     
     private var filteredDoSTests: [DoSTestType] {
@@ -925,7 +901,7 @@ struct AttackTypeCard: View {
             .padding(16)
             .background(
                 isSelected ? Color.blue.opacity(0.2) : 
-                Color(NSColor.controlBackgroundColor).opacity(0.8)
+                Color.cardBackground.opacity(0.8)
             )
             .foregroundColor(.primary)
             .cornerRadius(12)
@@ -1044,7 +1020,7 @@ struct DoSResultCard: View {
             }
         }
         .padding(16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+        .background(Color.elevatedBackground)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
     }

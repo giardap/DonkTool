@@ -1485,7 +1485,9 @@ class AttackFramework {
         let defaultPaths = [
             "/usr/share/dirb/wordlists/common.txt",
             "/usr/local/share/dirb/wordlists/common.txt",
-            "/opt/homebrew/share/dirb/wordlists/common.txt"
+            "/opt/homebrew/share/dirb/wordlists/common.txt",
+            "/usr/local/share/wordlists/common.txt",
+            "/usr/local/share/wordlists/SecLists/Discovery/Web-Content/common.txt"
         ]
         
         for path in defaultPaths {

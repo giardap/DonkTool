@@ -35,7 +35,7 @@ struct ModernWebTestingView: View {
                     .padding(20)
                 }
                 .frame(minWidth: 300, maxWidth: 400)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(Color.surfaceBackground)
                 
                 // Right panel - Results
                 WebResultsPanel()
@@ -93,13 +93,7 @@ struct ModernWebTestingView: View {
             }
         }
         .padding(20)
-        .background(
-            LinearGradient(
-                colors: [.green.opacity(0.05), .teal.opacity(0.05)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(Color.surfaceBackground)
     }
     
     @ViewBuilder
@@ -140,7 +134,7 @@ struct ModernWebTestingView: View {
                 }
             }
             .padding(16)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Color.cardBackground)
             .cornerRadius(12)
             
             // Test selection
@@ -186,7 +180,7 @@ struct ModernWebTestingView: View {
                 .disabled(appState.isWebScanning)
             }
             .padding(16)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Color.cardBackground)
             .cornerRadius(12)
             
             // Action buttons
@@ -405,11 +399,24 @@ struct WebTestToggle: View {
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 8)
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-            .cornerRadius(6)
+            .background(
+                isSelected ? 
+                    Color.blue.opacity(0.2) : 
+                    Color.cardBackground.opacity(0.7),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? Color.blue : Color.gray.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(
+                        isSelected ? Color.blue.opacity(0.6) : Color.borderPrimary.opacity(0.3), 
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+            .shadow(
+                color: Color.black.opacity(0.1), 
+                radius: isSelected ? 4 : 2, 
+                x: 0, 
+                y: isSelected ? 2 : 1
             )
         }
         .buttonStyle(.plain)
@@ -447,7 +454,7 @@ struct WebTestingIndicator: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.green.opacity(0.1))
+        .background(Color.cardBackground)
         .cornerRadius(8)
     }
 }
@@ -473,7 +480,7 @@ struct WebTestStatusBar: View {
                 .progressViewStyle(LinearProgressViewStyle(tint: .green))
         }
         .padding(12)
-        .background(Color.green.opacity(0.05))
+        .background(Color.cardBackground)
         .cornerRadius(8)
     }
 }

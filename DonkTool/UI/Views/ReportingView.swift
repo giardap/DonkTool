@@ -36,139 +36,55 @@ struct ReportingView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Configuration Panel
-            VStack(spacing: 20) {
+            // Header
+            VStack(alignment: .leading, spacing: .spacing_md) {
                 HStack {
-                    Text("Report Generation")
+                    Image(systemName: "doc.text")
                         .font(.title2)
-                        .fontWeight(.semibold)
+                        .foregroundStyle(.blue)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Report Generation")
+                            .font(.headerPrimary)
+                        
+                        Text("Create comprehensive security reports")
+                            .font(.captionPrimary)
+                            .foregroundColor(.secondary)
+                    }
                     
                     Spacer()
                     
                     if isGeneratingReport {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("Generating report...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                // Report type selection
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Report Type")
-                        .font(.headline)
-                    
-                    ForEach(ReportType.allCases, id: \.self) { type in
-                        ReportTypeSelectionView(
-                            type: type,
-                            isSelected: selectedReportType == type
-                        ) {
-                            selectedReportType = type
+                        HStack(spacing: .spacing_xs) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Generating...")
+                                .font(.captionPrimary)
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
-                
-                Divider()
-                
-                // Target selection
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Include Targets")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        Button("Select All") {
-                            selectedTargets = Set(appState.targets.map { $0.id })
-                        }
-                        
-                        Button("Clear All") {
-                            selectedTargets.removeAll()
-                        }
-                    }
-                    
-                    if appState.targets.isEmpty {
-                        Text("No targets available. Add targets in the Network Scanner.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .padding()
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                    } else {
-                        ForEach(appState.targets) { target in
-                            TargetSelectionView(
-                                target: target,
-                                isSelected: selectedTargets.contains(target.id)
-                            ) { isSelected in
-                                if isSelected {
-                                    selectedTargets.insert(target.id)
-                                } else {
-                                    selectedTargets.remove(target.id)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                Divider()
-                
-                // Report options
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Report Options")
-                        .font(.headline)
-                    
-                    Toggle("Include Detailed Findings", isOn: $includeDetailedFindings)
-                    Toggle("Include Remediation Recommendations", isOn: $includeRecommendations)
-                }
-                
-                // Generate button
-                Button(action: generateReport) {
-                    HStack {
-                        Image(systemName: "doc.text.fill")
-                        Text("Generate PDF Report")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                }
-                .disabled(selectedTargets.isEmpty || isGeneratingReport)
-                .buttonStyle(.borderedProminent)
             }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .standardContainer()
             
             Divider()
             
-            // Preview/Status section
-            VStack {
-                if let reportData = generatedReportData {
-                    VStack(spacing: 16) {
-                        Image(systemName: "doc.text.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.green)
-                        
-                        Text("Report Generated Successfully")
-                            .font(.headline)
-                        
-                        Text("Size: \(ByteCountFormatter.string(fromByteCount: Int64(reportData.count), countStyle: .file))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Button("Save Report") {
-                            showingFilePicker = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                } else {
-                    ContentUnavailableView(
-                        "No Report Generated",
-                        systemImage: "doc.text",
-                        description: Text("Configure your report settings and generate a PDF")
-                    )
+            ScrollView {
+                VStack(spacing: .spacing_lg) {
+                    // Report type selection
+                    reportTypeSection
+                    
+                    // Target selection
+                    targetSelectionSection
+                    
+                    // Report options
+                    reportOptionsSection
+                    
+                    // Generate button
+                    generateButtonSection
                 }
+                .padding(.spacing_md)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .fileExporter(
             isPresented: $showingFilePicker,
@@ -182,6 +98,134 @@ struct ReportingView: View {
             case .failure(let error):
                 print("Failed to save report: \(error)")
             }
+        }
+    }
+    
+    private var reportTypeSection: some View {
+        VStack(alignment: .leading, spacing: .spacing_md) {
+            Text("Report Type")
+                .sectionHeader()
+            
+            VStack(spacing: .spacing_xs) {
+                ForEach(ReportType.allCases, id: \.self) { type in
+                    ReportTypeSelectionView(
+                        type: type,
+                        isSelected: selectedReportType == type
+                    ) {
+                        selectedReportType = type
+                    }
+                }
+            }
+            .cardStyle()
+        }
+    }
+    
+    private var targetSelectionSection: some View {
+        VStack(alignment: .leading, spacing: .spacing_md) {
+            HStack {
+                Text("Include Targets")
+                    .sectionHeader()
+                
+                Spacer()
+                
+                Button("Select All") {
+                    selectedTargets = Set(appState.targets.map { $0.id })
+                }
+                .secondaryButton()
+                .controlSize(.small)
+                
+                Button("Clear All") {
+                    selectedTargets.removeAll()
+                }
+                .secondaryButton()
+                .controlSize(.small)
+            }
+            
+            if appState.targets.isEmpty {
+                EmptyStateView(
+                    icon: "network",
+                    title: "No Targets Available",
+                    subtitle: "Add targets in the Network Scanner to include them in reports",
+                    action: nil
+                )
+                .frame(height: 200)
+            } else {
+                VStack(spacing: .spacing_xs) {
+                    ForEach(appState.targets) { target in
+                        TargetSelectionView(
+                            target: target,
+                            isSelected: selectedTargets.contains(target.id)
+                        ) { isSelected in
+                            if isSelected {
+                                selectedTargets.insert(target.id)
+                            } else {
+                                selectedTargets.remove(target.id)
+                            }
+                        }
+                    }
+                }
+                .cardStyle()
+            }
+        }
+    }
+    
+    private var reportOptionsSection: some View {
+        VStack(alignment: .leading, spacing: .spacing_md) {
+            Text("Report Options")
+                .sectionHeader()
+            
+            VStack(spacing: .spacing_sm) {
+                Toggle("Include Detailed Findings", isOn: $includeDetailedFindings)
+                    .font(.bodySecondary)
+                
+                Divider()
+                
+                Toggle("Include Remediation Recommendations", isOn: $includeRecommendations)
+                    .font(.bodySecondary)
+            }
+            .cardStyle()
+        }
+    }
+    
+    private var generateButtonSection: some View {
+        VStack(spacing: .spacing_md) {
+            if let reportData = generatedReportData {
+                VStack(spacing: .spacing_md) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.green)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Report Generated")
+                                .font(.headerTertiary)
+                            
+                            Text("Size: \(ByteCountFormatter.string(fromByteCount: Int64(reportData.count), countStyle: .file))")
+                                .font(.captionPrimary)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    Button("Save Report") {
+                        showingFilePicker = true
+                    }
+                    .primaryButton()
+                    .frame(maxWidth: .infinity)
+                }
+                .cardStyle()
+            }
+            
+            Button(action: generateReport) {
+                HStack {
+                    Image(systemName: "doc.text.fill")
+                    Text("Generate PDF Report")
+                }
+            }
+            .primaryButton()
+            .frame(maxWidth: .infinity)
+            .disabled(selectedTargets.isEmpty || isGeneratingReport)
         }
     }
     
@@ -344,29 +388,28 @@ struct ReportTypeSelectionView: View {
     
     var body: some View {
         Button(action: onSelect) {
-            HStack {
+            HStack(spacing: .spacing_md) {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.title3)
                     .foregroundColor(isSelected ? .blue : .secondary)
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: .spacing_xs) {
                     Text(type.rawValue)
-                        .font(.headline)
+                        .font(.bodySecondary)
                         .foregroundColor(.primary)
                     
                     Text(type.description)
-                        .font(.caption)
+                        .font(.captionPrimary)
                         .foregroundColor(.secondary)
                 }
                 
                 Spacer()
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-            .cornerRadius(8)
+            .padding(.spacing_sm)
+            .background(isSelected ? Color.accentBackground : Color.clear, in: RoundedRectangle(cornerRadius: .radius_md))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radius_md)
+                    .stroke(isSelected ? Color.borderAccent : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -379,29 +422,31 @@ struct TargetSelectionView: View {
     let onToggle: (Bool) -> Void
     
     var body: some View {
-        HStack {
-            Button(action: { onToggle(!isSelected) }) {
+        Button(action: { onToggle(!isSelected) }) {
+            HStack(spacing: .spacing_md) {
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.title3)
                     .foregroundColor(isSelected ? .blue : .secondary)
-            }
-            .buttonStyle(.plain)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(target.name)
-                    .font(.headline)
                 
-                Text(target.ipAddress)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: .spacing_xs) {
+                    Text(target.name)
+                        .font(.bodySecondary)
+                        .foregroundColor(.primary)
+                    
+                    Text(target.ipAddress)
+                        .font(.captionPrimary)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Text("\(target.vulnerabilities.count)")
+                    .statusIndicator(.info)
             }
-            
-            Spacer()
-            
-            Text("\(target.vulnerabilities.count) vulnerabilities")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            .padding(.spacing_sm)
+            .background(isSelected ? Color.accentBackground : Color.clear, in: RoundedRectangle(cornerRadius: .radius_md))
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
     }
 }
 
