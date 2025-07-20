@@ -33,9 +33,10 @@ class DoSTestManager: ObservableObject {
         }
         
         guard ToolDetection.shared.isToolInstalled(config.testType.toolRequired) else {
+            let installCommand = getInstallCommand(for: config.testType.toolRequired)
             return createErrorResult(
                 config: config,
-                error: "Required tool '\(config.testType.toolRequired)' not installed"
+                error: "Required tool '\(config.testType.toolRequired)' not installed.\n\nTo install: \(installCommand)\n\nOr run the full DoS tools installer: ./install_dos_tools.sh"
             )
         }
         
@@ -1207,32 +1208,98 @@ print("HULK attack completed")
     private func executeCommandInternal(command: String, args: [String], duration: TimeInterval, config: DoSTestConfiguration? = nil) async -> (String, Bool) {
         let process = Process()
         
-        // Try to find the command in user's local bin first
+        // Commands that require elevated privileges
+        let privilegedCommands = ["hping3", "hyenae", "thc-ssl-dos"]
+        let requiresSudo = privilegedCommands.contains(command)
+        
+        // Try to find the command in user's local bin first, with special handling for some tools
+        var searchCommand = command
+        
+        // Use wrapper for hping3 to handle sudo issues
+        if command == "hping3" {
+            searchCommand = "hping3-wrapper"
+        }
+        
         let commandPaths = [
+            "/Users/giardap/.local/bin/\(searchCommand)",
             "/Users/giardap/.local/bin/\(command)",
             "/usr/local/bin/\(command)",
             "/opt/homebrew/bin/\(command)",
             "/Users/giardap/go/bin/\(command)",
             "/usr/bin/\(command)",
             "/Users/giardap/Library/pnpm/\(command)",  // PNPM global path
-            "/Users/giardap/Library/pnpm/global/5/node_modules/.bin/\(command)"  // PNPM bin path
+            "/Users/giardap/Library/pnpm/global/5/node_modules/.bin/\(command)",  // PNPM bin path
+            "/usr/local/node/bin/\(command)",  // Node.js path
+            "/opt/homebrew/bin/node",  // Homebrew Node.js path (for artillery)
+            "/usr/local/bin/node"  // Standard Node.js path
         ]
         
         var executablePath: String?
-        for path in commandPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                executablePath = path
-                break
+        
+        // Special handling for Artillery.io which is a Node.js package
+        if command == "artillery" {
+            // Check for Node.js and Artillery installation
+            let nodePaths = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+            let artilleryPaths = [
+                "/Users/giardap/Library/pnpm/global/5/node_modules/.bin/artillery",
+                "/usr/local/bin/artillery",
+                "/opt/homebrew/bin/artillery"
+            ]
+            
+            var nodeFound = false
+            for nodePath in nodePaths {
+                if FileManager.default.fileExists(atPath: nodePath) {
+                    nodeFound = true
+                    break
+                }
+            }
+            
+            if !nodeFound {
+                return ("Node.js not found. Please install Node.js first: brew install node", false)
+            }
+            
+            for artilleryPath in artilleryPaths {
+                if FileManager.default.fileExists(atPath: artilleryPath) {
+                    executablePath = artilleryPath
+                    break
+                }
+            }
+            
+            if executablePath == nil {
+                return ("Artillery.io not found. Please install: npm install -g artillery", false)
+            }
+        } else {
+            for path in commandPaths {
+                if FileManager.default.fileExists(atPath: path) {
+                    executablePath = path
+                    break
+                }
             }
         }
         
-        if let execPath = executablePath {
+        if requiresSudo && command != "hping3" {
+            // Use sudo for privileged commands (except hping3 which uses wrapper)
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+            if let execPath = executablePath {
+                process.arguments = [execPath] + args
+            } else {
+                process.arguments = [command] + args
+            }
+        } else if let execPath = executablePath {
             process.executableURL = URL(fileURLWithPath: execPath)
             process.arguments = args
         } else {
-            // Fall back to using env to find the command
+            // Fall back to using env with extended PATH
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = [command] + args
+            
+            // Set extended PATH environment
+            var environment = ProcessInfo.processInfo.environment
+            let userBinPath = "/Users/giardap/.local/bin"
+            let goBinPath = "/Users/giardap/go/bin"
+            let currentPath = environment["PATH"] ?? ""
+            environment["PATH"] = "\(userBinPath):\(goBinPath):\(currentPath)"
+            process.environment = environment
         }
         
         let outputPipe = Pipe()
@@ -1246,20 +1313,9 @@ print("HULK attack completed")
         let startTime = Date()
         
         do {
-            let startMessage = """
-            🚀 STARTING ATTACK: \(command)
-            📋 Full Command: \(command) \(args.joined(separator: " "))
-            🎯 Target: \(args.contains(where: { $0.contains(".") }) ? args.first(where: { $0.contains(".") }) ?? "Unknown" : "Unknown")
-            ⏱️ Duration: \(duration) seconds
-            🔥 Attack Type: \(command.uppercased())
-            \(String(repeating: "=", count: 60))
-            """
-            
-            print(startMessage)
-            
+            // Only set current command - no startup messages in console
             await MainActor.run {
                 self.currentCommand = "\(command) \(args.joined(separator: " "))"
-                self.consoleOutput += startMessage + "\n"
             }
             
             try process.run()
@@ -1272,12 +1328,12 @@ print("HULK attack completed")
             let outputHandle = outputPipe.fileHandleForReading
             let errorHandle = errorPipe.fileHandleForReading
             
-            // Setup real-time output monitoring - show raw tool output
+            // Setup real-time output monitoring - show RAW tool output only
             outputHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
                     if let str = String(data: data, encoding: .utf8) {
-                        print("Tool Output: \(str)")
+                        // Show completely raw output - no formatting
                         outputQueue.sync {
                             output += str
                         }
@@ -1292,7 +1348,7 @@ print("HULK attack completed")
                 let data = handle.availableData
                 if !data.isEmpty {
                     if let str = String(data: data, encoding: .utf8) {
-                        print("Tool Error: \(str)")
+                        // Show completely raw error output - no formatting
                         outputQueue.sync {
                             output += str
                         }
@@ -1306,7 +1362,6 @@ print("HULK attack completed")
             // Create a timer to terminate the process after duration
             let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
                 if process.isRunning {
-                    print("⏹️ TERMINATING \(command.uppercased()) after \(duration) seconds")
                     outputHandle.readabilityHandler = nil
                     errorHandle.readabilityHandler = nil
                     process.terminate()
@@ -1365,29 +1420,8 @@ print("HULK attack completed")
                 }
             }
             
+            // Calculate actual duration for result tracking but don't clutter console
             let actualDuration = Date().timeIntervalSince(startTime)
-            let completionMessage = """
-            
-            ═══════════════════════════════════════════════════════════════
-            🏁 ATTACK COMPLETED: \(command.uppercased())
-            ═══════════════════════════════════════════════════════════════
-            📊 EXECUTION SUMMARY:
-            • Command: \(command) \(args.joined(separator: " "))
-            • Actual Duration: \(String(format: "%.1f", actualDuration))s
-            • Planned Duration: \(String(format: "%.1f", duration))s
-            • Exit Status: \(process.terminationStatus)
-            • Executable Used: \(executablePath ?? "env lookup")
-            • Target: \(args.contains(where: { $0.contains(".") }) ? args.first(where: { $0.contains(".") }) ?? "Unknown" : "Unknown")
-            ═══════════════════════════════════════════════════════════════
-            """
-            
-            outputQueue.sync {
-                output += completionMessage
-            }
-            
-            Task { @MainActor in
-                self.consoleOutput += completionMessage + "\n"
-            }
             
             success = process.terminationStatus == 0 && process.terminationReason == .exit
             
@@ -1402,24 +1436,12 @@ print("HULK attack completed")
                 success = !output.contains("ModuleNotFoundError") && !output.contains("No module named")
             }
             
-            let finalStatus = success ? 
-                "✅ ATTACK SUCCESSFUL: \(command.uppercased()) completed in \(String(format: "%.1f", actualDuration))s" :
-                "❌ ATTACK FAILED: \(command.uppercased()) failed with exit code \(process.terminationStatus)"
-            
-            let statusLine = "📈 Final Status: \(success ? "SUCCESS" : "FAILED")\n\(String(repeating: "=", count: 60))"
-            
-            print(finalStatus)
-            print(statusLine)
-            
-            Task { @MainActor in
-                self.consoleOutput += finalStatus + "\n" + statusLine + "\n"
-            }
+            // Track success status internally without console clutter
             
         } catch {
-            let errorMessage = "❌ Failed to execute command '\(command)': \(error.localizedDescription)"
+            let errorMessage = "Failed to execute command '\(command)': \(error.localizedDescription)"
             output = errorMessage
             success = false
-            print("❌ Failed to execute \(command): \(error)")
             
             Task { @MainActor in
                 self.consoleOutput += errorMessage + "\n"
@@ -1831,6 +1853,41 @@ print("HULK attack completed")
         currentTest = nil
         progress = 0.0
         consoleOutput += "\n🛑 All attacks stopped by user\n"
+    }
+    
+    private func getInstallCommand(for tool: String) -> String {
+        switch tool {
+        case "wrk":
+            return "brew install wrk"
+        case "slowhttptest":
+            return "git clone https://github.com/shekyan/slowhttptest.git && cd slowhttptest && ./configure && make && sudo make install"
+        case "hping3":
+            return "brew install hping3"
+        case "goldeneye":
+            return "git clone https://github.com/jseidl/GoldenEye.git && cd GoldenEye && chmod +x goldeneye.py && sudo ln -sf $(pwd)/goldeneye.py /usr/local/bin/goldeneye"
+        case "xerxes":
+            return "git clone https://github.com/sepehrdaddev/Xerxes.git && cd Xerxes && gcc -o xerxes xerxes.c && sudo cp xerxes /usr/local/bin/"
+        case "hyenae":
+            return "git clone https://github.com/r-richter/hyenae.git && cd hyenae && ./autogen.sh && ./configure && make && sudo make install"
+        case "mhddos":
+            return "git clone https://github.com/MatrixTM/MHDDoS.git && cd MHDDoS && pip3 install -r requirements.txt"
+        case "torshammer":
+            return "git clone https://github.com/Karlheinzniebuhr/torshammer.git && cd torshammer && chmod +x torshammer.py && sudo ln -sf $(pwd)/torshammer.py /usr/local/bin/torshammer"
+        case "artillery":
+            return "brew install node && npm install -g artillery"
+        case "thc-ssl-dos":
+            return "git clone https://github.com/cyberaz0r/thc-ssl-dos_mod.git && cd thc-ssl-dos_mod && gcc -o thc-ssl-dos thc-ssl-dos.c -lssl -lcrypto && sudo cp thc-ssl-dos /usr/local/bin/"
+        case "t50":
+            return "git clone https://github.com/foreni-packages/t50.git && cd t50 && ./autogen.sh && ./configure && make && sudo make install"
+        case "pyloris":
+            return "git clone https://github.com/darkerego/pyloris.git && cd pyloris && chmod +x pyloris.py && sudo ln -sf $(pwd)/pyloris.py /usr/local/bin/pyloris"
+        case "pentmenu":
+            return "git clone https://github.com/GinjaChris/pentmenu.git && cd pentmenu && chmod +x pentmenu.sh && sudo ln -sf $(pwd)/pentmenu.sh /usr/local/bin/pentmenu"
+        case "iperf3":
+            return "brew install iperf3"
+        default:
+            return "Check ./install_dos_tools.sh for installation instructions"
+        }
     }
 }
 
