@@ -580,6 +580,7 @@ class AttackFramework {
     private func executeDirb(target: String, port: Int, session: AttackSession) async -> (output: [String], files: [String], success: Bool) {
         var output: [String] = []
         var files: [String] = []
+        var scanSuccess = false  // Declare at function level
         
         let process = Process()
         let pipe = Pipe()
@@ -698,7 +699,6 @@ class AttackFramework {
             sendRealTimeOutput(exitMessage, sessionId: session.sessionId)
             
             // Analyze exit code and provide detailed feedback
-            var scanSuccess = false
             var detailedResult = ""
             
             switch exitCode {
@@ -794,12 +794,10 @@ class AttackFramework {
     private func executeGobuster(target: String, port: Int, session: AttackSession) async -> (output: [String], files: [String], success: Bool) {
         var output: [String] = []
         var files: [String] = []
+        var scanSuccess = false  // Declare at function level
         
-        let wordlistsPath = createWordlistsDirectory()
-        let webWordlistPath = "\(wordlistsPath)/web_common.txt"
-        
-        // Create web directory wordlist
-        await createWebWordlist(path: webWordlistPath)
+        // Use the same wordlist as dirb for consistency
+        let wordlistPath = await createDirbWordlist()
         
         let process = Process()
         let pipe = Pipe()
@@ -815,7 +813,7 @@ class AttackFramework {
         process.arguments = [
             "dir",
             "-u", "http://\(target):\(port)",
-            "-w", webWordlistPath,
+            "-w", wordlistPath,
             "-t", "20",
             "-q"  // Quiet mode
         ]
@@ -826,6 +824,21 @@ class AttackFramework {
         
         do {
             try process.run()
+            
+            // Set up a timeout for the scan (5 minutes max)
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
+                if process.isRunning {
+                    process.terminate()
+                    await MainActor.run {
+                        self.sendRealTimeOutput("⏰ Directory scan timed out after 5 minutes", sessionId: session.sessionId)
+                    }
+                }
+            }
+            
+            defer {
+                timeoutTask.cancel()
+            }
             
             // Read output in real-time using a background task
             await withTaskGroup(of: Void.self) { group in
@@ -878,9 +891,50 @@ class AttackFramework {
             
             process.waitUntilExit()
             
-            let exitMessage = "Process completed with exit code: \(process.terminationStatus)"
+            let exitCode = process.terminationStatus
+            let exitMessage = "Process completed with exit code: \(exitCode)"
             sendRealTimeOutput("", sessionId: session.sessionId)
             sendRealTimeOutput(exitMessage, sessionId: session.sessionId)
+            
+            // Analyze exit code and provide detailed feedback
+            var detailedResult = ""
+            
+            switch exitCode {
+            case 0:
+                scanSuccess = true
+                detailedResult = "✅ Directory enumeration completed successfully"
+            case 1:
+                detailedResult = "❌ Tool execution failed - likely wordlist or target issues"
+                if !FileManager.default.fileExists(atPath: wordlistPath) {
+                    detailedResult += "\n   • Wordlist not found: \(wordlistPath)"
+                } else {
+                    detailedResult += "\n   • Wordlist found: \(wordlistPath)"
+                }
+                detailedResult += "\n   • Target may be unreachable or no results found"
+            case 2:
+                detailedResult = "❌ Target unreachable or connection failed"
+            default:
+                detailedResult = "❌ Unexpected error occurred (exit code: \(exitCode))"
+            }
+            
+            output.append(detailedResult)
+            sendRealTimeOutput("", sessionId: session.sessionId)
+            sendRealTimeOutput("=== SCAN ANALYSIS ===", sessionId: session.sessionId)
+            sendRealTimeOutput(detailedResult, sessionId: session.sessionId)
+            
+            if !scanSuccess {
+                let troubleshooting = [
+                    "🔧 TROUBLESHOOTING SUGGESTIONS:",
+                    "• Verify target is accessible: curl -I http://\(target):\(port)/",
+                    "• Check wordlist exists: ls -la \(wordlistPath)",
+                    "• Test manual scan: gobuster dir -u http://\(target):\(port) -w \(wordlistPath) -q"
+                ]
+                output.append(contentsOf: troubleshooting)
+                sendRealTimeOutput("", sessionId: session.sessionId)
+                for suggestion in troubleshooting {
+                    sendRealTimeOutput(suggestion, sessionId: session.sessionId)
+                }
+            }
             
             // Get final output for parsing (this might be empty since we read it in real-time)
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -905,14 +959,17 @@ class AttackFramework {
             return (output, files, false)
         }
         
-        // Consider scan successful if process completed successfully
-        let success = process.terminationStatus == 0
-        
-        if success {
+        // Use the detailed scan success determination from above
+        if scanSuccess {
             sendRealTimeOutput("", sessionId: session.sessionId)
-            sendRealTimeOutput("✅ Gobuster scan completed successfully", sessionId: session.sessionId)
             if !files.isEmpty {
-                sendRealTimeOutput("📁 Found \(files.count) directories/files", sessionId: session.sessionId)
+                sendRealTimeOutput("📁 Found \(files.count) directories/files:", sessionId: session.sessionId)
+                for file in files.prefix(10) { // Show first 10 findings
+                    sendRealTimeOutput("  • \(file)", sessionId: session.sessionId)
+                }
+                if files.count > 10 {
+                    sendRealTimeOutput("  ... and \(files.count - 10) more", sessionId: session.sessionId)
+                }
             } else {
                 sendRealTimeOutput("📁 No directories found (this is normal for secure sites)", sessionId: session.sessionId)
             }
@@ -921,7 +978,7 @@ class AttackFramework {
             sendRealTimeOutput("❌ Gobuster scan failed with exit code: \(process.terminationStatus)", sessionId: session.sessionId)
         }
         
-        return (output, files, success)
+        return (output, files, scanSuccess)
     }
     
     private func executeNmap(target: String, session: AttackSession) async -> (output: [String], services: [String]) {

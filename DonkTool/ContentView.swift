@@ -321,7 +321,7 @@ struct DetailView: View {
             case .networkScanner:
                 ModernNetworkScannerView()
             case .webTesting:
-                ModernWebTestingView()
+                WebTestingView()
             case .dosStressTesting:
                 DoSTestingView()
             case .metasploitConsole:

@@ -41,6 +41,8 @@ struct WebScanResult: Identifiable, Hashable {
     let description: String
     let url: String
     let severity: Severity
+    let details: [String] // Detailed findings like directory names, vulnerabilities
+    let timestamp: Date
     
     enum Severity: String, Hashable {
         case informational, low, medium, high
@@ -100,6 +102,15 @@ class AppState {
     var currentWebTarget: String = ""
     var webScanProgress: Double = 0.0
     var webScanResults: [WebScanResult] = []
+    var currentWebTestName: String = ""
+    private var webScanTask: Task<Void, Never>?
+    
+    // Real-time verbose output
+    var currentToolOutput: [String] = []
+    var currentToolCommand: String = ""
+    var isVerboseMode: Bool = true
+    var toolExecutionStartTime: Date?
+    var toolExecutionStatus: String = ""
     
     // Active scanning state
     var activeScans: [String: String] = [:]
@@ -185,15 +196,1245 @@ class AppState {
     }
     
     // Web Scan Methods
-    func startWebScan(targetURL: String) {
+    func startWebScan(targetURL: String, selectedTools: [String] = []) {
         isWebScanning = true
         currentWebTarget = targetURL
-        // Mock scanning logic
+        webScanProgress = 0.0
+        webScanResults.removeAll()
+        
+        // Execute real web vulnerability tests
+        Task {
+            await executeRealWebScanning(targetURL: targetURL, selectedTools: selectedTools)
+        }
     }
     
     func stopWebScan() {
         isWebScanning = false
         currentWebTarget = ""
+    }
+    
+    // Real web vulnerability scanning implementation
+    private func executeRealWebScanning(targetURL: String, selectedTools: [String]) async {
+        let allWebTests = [
+            ("SQL Injection", { await self.executeRealSQLMapTest(targetURL: targetURL) }),
+            ("Web Vulnerability Scan", { await self.executeRealNiktoTest(targetURL: targetURL) }),
+            ("Nuclei Template Scan", { await self.executeNucleiScan(targetURL: targetURL) }),
+            ("Directory Enumeration", { await self.executeRealDirectoryTest(targetURL: targetURL) }),
+            ("Advanced Directory Fuzzing", { await self.executeFeroxbusterScan(targetURL: targetURL) }),
+            ("XSS Detection", { await self.executeXSSStrikeScan(targetURL: targetURL) }),
+            ("OWASP ZAP Scan", { await self.executeZAPScan(targetURL: targetURL) }),
+            ("HTTP/HTTPS Analysis", { await self.executeHTTPxScan(targetURL: targetURL) }),
+            ("SSL/TLS Analysis", { await self.executeTestSSLScan(targetURL: targetURL) }),
+            ("HTTP Header Security", { await self.executeHTTPHeaderTest(targetURL: targetURL) }),
+            ("Basic SSL Check", { await self.executeSSLTest(targetURL: targetURL) })
+        ]
+        
+        // Filter tests based on selected tools
+        let webTests = selectedTools.isEmpty ? allWebTests : allWebTests.filter { testName, _ in
+            selectedTools.contains(testName)
+        }
+        
+        let totalTests = webTests.count
+        print("🔧 DEBUG: Starting web scan with \(totalTests) selected tools: \(selectedTools)")
+        
+        for (index, (testName, testFunc)) in webTests.enumerated() {
+            // Update progress and current test name
+            await MainActor.run {
+                self.webScanProgress = Double(index) / Double(totalTests)
+                self.currentWebTestName = testName
+            }
+            
+            // Check if task was cancelled
+            if Task.isCancelled {
+                print("🛑 DEBUG: Scan cancelled, stopping execution")
+                await MainActor.run {
+                    self.isWebScanning = false
+                    self.currentWebTestName = "Scan cancelled"
+                }
+                return
+            }
+            
+            print("🔍 Starting web test: \(testName)")
+            
+            // Execute the test with timeout
+            let result: WebScanResult?
+            do {
+                result = try await withTimeout(seconds: 300) { // 5 minute timeout per test
+                    await testFunc()
+                }
+                print("✅ Completed web test: \(testName)")
+            } catch {
+                print("⏰ Timeout or error in web test: \(testName) - \(error)")
+                result = WebScanResult(
+                    type: testName,
+                    description: "Test timed out or failed: \(error.localizedDescription)",
+                    url: targetURL,
+                    severity: .informational,
+                    details: [],
+                    timestamp: Date()
+                )
+            }
+            
+            // Add result to UI
+            await MainActor.run {
+                if let scanResult = result {
+                    self.webScanResults.append(scanResult)
+                }
+            }
+            
+            // Small delay between tests
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        }
+        
+        // Final check for cancellation
+        if Task.isCancelled {
+            await MainActor.run {
+                self.isWebScanning = false
+                self.currentWebTestName = "Scan cancelled"
+            }
+            return
+        }
+        
+        // Complete the scan
+        await MainActor.run {
+            self.webScanProgress = 1.0
+            self.currentWebTestName = "Scan completed"
+            self.isWebScanning = false
+            self.webScanTask = nil
+        }
+    }
+    
+    // Real tool implementations for web testing
+    private func executeRealSQLMapTest(targetURL: String) async -> WebScanResult? {
+        let result = await executeSQLMapCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "SQL Injection",
+                description: "SQLMap detected SQL injection vulnerability: \(result.vulnerabilities.first!)",
+                url: targetURL,
+                severity: .high,
+                details: result.vulnerabilities,
+                timestamp: Date()
+            )
+        } else if result.output.contains(where: { $0.contains("testing completed") || $0.contains("not vulnerable") }) {
+            return WebScanResult(
+                type: "SQL Injection",
+                description: "No SQL injection vulnerabilities detected",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeRealNiktoTest(targetURL: String) async -> WebScanResult? {
+        let result = await executeNiktoCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "Web Vulnerability",
+                description: "Nikto found vulnerabilities: \(result.vulnerabilities.first!)",
+                url: targetURL,
+                severity: .medium,
+                details: result.vulnerabilities,
+                timestamp: Date()
+            )
+        } else if result.output.contains(where: { $0.contains("scan complete") || $0.contains("tested") }) {
+            return WebScanResult(
+                type: "Web Vulnerability Scan",
+                description: "Nikto scan completed - no major vulnerabilities found",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeRealDirectoryTest(targetURL: String) async -> WebScanResult? {
+        let result = await executeDirectoryEnumerationCommand(targetURL: targetURL)
+        
+        if !result.files.isEmpty {
+            return WebScanResult(
+                type: "Directory Enumeration",
+                description: "Found \(result.files.count) accessible directories/files: \(result.files.prefix(3).joined(separator: ", "))\(result.files.count > 3 ? "..." : "")",
+                url: targetURL,
+                severity: .medium,
+                details: result.files,
+                timestamp: Date()
+            )
+        } else if result.success {
+            return WebScanResult(
+                type: "Directory Enumeration",
+                description: "Directory scan completed - no accessible directories found",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeHTTPHeaderTest(targetURL: String) async -> WebScanResult? {
+        let headers = await getHTTPHeaders(targetURL: targetURL)
+        
+        let requiredHeaders = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"]
+        let missingHeaders = requiredHeaders.filter { requiredHeader in
+            !headers.contains { $0.lowercased().contains(requiredHeader.lowercased()) }
+        }
+        
+        if !missingHeaders.isEmpty {
+            return WebScanResult(
+                type: "HTTP Header Security",
+                description: "Missing security headers: \(missingHeaders.joined(separator: ", "))",
+                url: targetURL,
+                severity: .medium,
+                details: missingHeaders,
+                timestamp: Date()
+            )
+        } else {
+            return WebScanResult(
+                type: "HTTP Header Security",
+                description: "All required security headers are present",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+    }
+    
+    private func executeSSLTest(targetURL: String) async -> WebScanResult? {
+        if !targetURL.hasPrefix("https://") {
+            return WebScanResult(
+                type: "SSL/TLS Configuration",
+                description: "Website not using HTTPS encryption",
+                url: targetURL,
+                severity: .high,
+                details: ["No HTTPS encryption", "Data transmitted in plaintext"],
+                timestamp: Date()
+            )
+        }
+        
+        // Basic SSL check
+        guard let url = URL(string: targetURL) else { return nil }
+        
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse {
+                return WebScanResult(
+                    type: "SSL/TLS Configuration",
+                    description: "HTTPS connection successful - basic SSL check passed",
+                    url: targetURL,
+                    severity: .informational,
+                    details: ["SSL certificate valid", "HTTPS connection established"],
+                    timestamp: Date()
+                )
+            }
+        } catch {
+            return WebScanResult(
+                type: "SSL/TLS Configuration",
+                description: "SSL/TLS connection failed: \(error.localizedDescription)",
+                url: targetURL,
+                severity: .high,
+                details: ["Connection error: \(error.localizedDescription)"],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    // Command execution methods
+    private func executeSQLMapCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        // Check if SQLMap is installed
+        guard let sqlmapPath = findWebToolPath("sqlmap") else {
+            output.append("❌ SQLMap not found. Install with: brew install sqlmap")
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: sqlmapPath)
+        process.arguments = [
+            "-u", targetURL,
+            "--batch",  // Non-interactive mode
+            "--level=1",  // Test level
+            "--risk=1",   // Risk level
+            "--timeout=30",  // Timeout per request
+            "--retries=1"    // Number of retries
+        ]
+        
+        output.append("🚀 Starting SQLMap scan...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set a timeout for the process
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ SQLMap scan timed out after 5 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse SQLMap output for vulnerabilities
+                for line in lines {
+                    let lowerLine = line.lowercased()
+                    if lowerLine.contains("vulnerable") && !lowerLine.contains("not vulnerable") {
+                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    } else if lowerLine.contains("injection") && lowerLine.contains("found") {
+                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ SQLMap scan completed")
+            
+        } catch {
+            output.append("❌ Error executing SQLMap: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeNiktoCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        // Check if Nikto is installed
+        guard let niktoPath = findWebToolPath("nikto") else {
+            output.append("❌ Nikto not found. Install with: brew install nikto")
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: niktoPath)
+        process.arguments = [
+            "-h", targetURL,
+            "-C", "all",  // Check all vulnerability classes
+            "-nointeractive",  // Don't prompt for input
+            "-timeout", "30",  // Request timeout
+            "-maxtime", "300"  // Maximum scan time (5 minutes)
+        ]
+        
+        output.append("🚀 Starting Nikto scan...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse Nikto output for vulnerabilities
+                for line in lines {
+                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedLine.contains("+") && (
+                        trimmedLine.lowercased().contains("vuln") ||
+                        trimmedLine.lowercased().contains("security") ||
+                        trimmedLine.lowercased().contains("risk") ||
+                        trimmedLine.lowercased().contains("exposed") ||
+                        trimmedLine.lowercased().contains("version") ||
+                        trimmedLine.lowercased().contains("header")
+                    ) {
+                        vulnerabilities.append(trimmedLine)
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            output.append("✅ Nikto scan completed")
+            
+        } catch {
+            output.append("❌ Error executing Nikto: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeDirectoryEnumerationCommand(targetURL: String) async -> (output: [String], files: [String], success: Bool) {
+        var output: [String] = []
+        let files: [String] = []
+        
+        // Try gobuster first, then dirb as fallback
+        if let gobusterPath = findWebToolPath("gobuster") {
+            let result = await executeGobusterWeb(targetURL: targetURL, toolPath: gobusterPath)
+            return (result.output, result.files, result.success)
+        } else if let dirbPath = findWebToolPath("dirb") {
+            let result = await executeDirbWeb(targetURL: targetURL, toolPath: dirbPath)
+            return (result.output, result.files, result.success)
+        } else {
+            output.append("❌ No directory enumeration tools found. Install with: brew install gobuster dirb")
+            return (output, files, false)
+        }
+    }
+    
+    private func executeGobusterWeb(targetURL: String, toolPath: String) async -> (output: [String], files: [String], success: Bool) {
+        var output: [String] = []
+        var files: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.executableURL = URL(fileURLWithPath: toolPath)
+        
+        // Create wordlist for web testing
+        let wordlist = createWebWordlist()
+        
+        process.arguments = [
+            "dir",
+            "-u", targetURL,
+            "-w", wordlist,
+            "-t", "10",  // 10 threads
+            "--timeout", "30s"
+        ]
+        
+        output.append("🚀 Starting Gobuster directory enumeration...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set a timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ Gobuster scan timed out after 5 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse gobuster output for found directories/files
+                for line in lines {
+                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedLine.contains("(Status: 200)") || trimmedLine.contains("(Status: 301)") || trimmedLine.contains("(Status: 302)") {
+                        // Extract just the path from gobuster output (format: /path (Status: XXX) [Size: XXX])
+                        if let pathMatch = trimmedLine.components(separatedBy: " ").first {
+                            files.append(pathMatch)
+                        } else {
+                            files.append(trimmedLine)
+                        }
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ Gobuster scan completed")
+            
+            return (output, files, true)
+            
+        } catch {
+            output.append("❌ Error executing Gobuster: \(error.localizedDescription)")
+            return (output, files, false)
+        }
+    }
+    
+    private func executeDirbWeb(targetURL: String, toolPath: String) async -> (output: [String], files: [String], success: Bool) {
+        var output: [String] = []
+        var files: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.executableURL = URL(fileURLWithPath: toolPath)
+        
+        let wordlist = createWebWordlist()
+        
+        process.arguments = [
+            targetURL,
+            wordlist,
+            "-w"  // Don't stop on warning messages
+        ]
+        
+        output.append("🚀 Starting Dirb directory enumeration...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse dirb output for found directories/files
+                for line in lines {
+                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedLine.hasPrefix("+ ") && (trimmedLine.contains("(CODE:200)") || trimmedLine.contains("(CODE:301)")) {
+                        files.append(trimmedLine)
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            output.append("✅ Dirb scan completed")
+            
+            return (output, files, true)
+            
+        } catch {
+            output.append("❌ Error executing Dirb: \(error.localizedDescription)")
+            return (output, files, false)
+        }
+    }
+    
+    private func getHTTPHeaders(targetURL: String) async -> [String] {
+        guard let url = URL(string: targetURL) else { return [] }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 10.0
+        
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                return Array(httpResponse.allHeaderFields.keys.compactMap { $0 as? String })
+            }
+        } catch {
+            print("Error fetching headers: \(error)")
+        }
+        
+        return []
+    }
+    
+    private func findWebToolPath(_ toolName: String) -> String? {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        let commonPaths = [
+            "/usr/local/bin/\(toolName)",
+            "/opt/homebrew/bin/\(toolName)",
+            "/usr/bin/\(toolName)",
+            "/bin/\(toolName)",
+            "\(homeDir)/go/bin/\(toolName)",
+            "\(homeDir)/.cargo/bin/\(toolName)",
+            "\(homeDir)/.local/bin/\(toolName)"
+        ]
+        
+        for path in commonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        
+        // Try using 'which' command
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = [toolName]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !path.isEmpty {
+                return path
+            }
+        } catch {
+            // Ignore error, tool not found
+        }
+        
+        return nil
+    }
+    
+    private func createWebWordlist() -> String {
+        let tempDir = FileManager.default.temporaryDirectory
+        let wordlistPath = tempDir.appendingPathComponent("web_wordlist.txt")
+        
+        let commonWebPaths = [
+            "admin", "administrator", "login", "wp-admin", "phpmyadmin",
+            "backup", "config", "test", "dev", "staging", "api",
+            "uploads", "images", "css", "js", "assets", "static",
+            "robots.txt", "sitemap.xml", ".git", ".svn", "backup.zip",
+            "dashboard", "panel", "control", "manager", "system",
+            "database", "db", "sql", "mysql", "data", "files",
+            "docs", "documentation", "help", "support", "contact"
+        ]
+        
+        let wordlistContent = commonWebPaths.joined(separator: "\n")
+        
+        do {
+            try wordlistContent.write(to: wordlistPath, atomically: true, encoding: .utf8)
+            return wordlistPath.path
+        } catch {
+            return "/dev/null"
+        }
+    }
+    
+    // MARK: - Advanced Web Security Tool Implementations
+    
+    private func executeNucleiScan(targetURL: String) async -> WebScanResult? {
+        let result = await executeNucleiCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "Nuclei Vulnerability Scan",
+                description: "Found \(result.vulnerabilities.count) vulnerabilities: \(result.vulnerabilities.prefix(3).joined(separator: ", "))",
+                url: targetURL,
+                severity: .high,
+                details: result.vulnerabilities,
+                timestamp: Date()
+            )
+        } else if !result.output.isEmpty {
+            return WebScanResult(
+                type: "Nuclei Vulnerability Scan", 
+                description: "Nuclei scan completed - no critical vulnerabilities found",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeFeroxbusterScan(targetURL: String) async -> WebScanResult? {
+        let result = await executeFeroxbusterCommand(targetURL: targetURL)
+        
+        if !result.files.isEmpty {
+            return WebScanResult(
+                type: "Advanced Directory Fuzzing",
+                description: "Feroxbuster found \(result.files.count) directories/files with recursive scanning",
+                url: targetURL,
+                severity: .medium,
+                details: [],
+                timestamp: Date()
+            )
+        } else if result.success {
+            return WebScanResult(
+                type: "Advanced Directory Fuzzing",
+                description: "Feroxbuster recursive scan completed - no accessible paths found",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeXSSStrikeScan(targetURL: String) async -> WebScanResult? {
+        let result = await executeXSSStrikeCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "XSS Vulnerability Detection",
+                description: "XSStrike detected XSS vulnerabilities: \(result.vulnerabilities.first!)",
+                url: targetURL,
+                severity: .high,
+                details: result.vulnerabilities,
+                timestamp: Date()
+            )
+        } else if !result.output.isEmpty && result.output.contains(where: { $0.contains("scan completed") }) {
+            return WebScanResult(
+                type: "XSS Vulnerability Detection",
+                description: "XSStrike scan completed - no XSS vulnerabilities found",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeZAPScan(targetURL: String) async -> WebScanResult? {
+        let result = await executeZAPCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "OWASP ZAP Comprehensive Scan",
+                description: "ZAP found \(result.vulnerabilities.count) security issues including active/passive findings",
+                url: targetURL,
+                severity: .medium,
+                details: [],
+                timestamp: Date()
+            )
+        } else if !result.output.isEmpty {
+            return WebScanResult(
+                type: "OWASP ZAP Comprehensive Scan",
+                description: "ZAP baseline scan completed - no major security issues detected",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeHTTPxScan(targetURL: String) async -> WebScanResult? {
+        let result = await executeHTTPxCommand(targetURL: targetURL)
+        
+        if !result.technologies.isEmpty || !result.statusIssues.isEmpty {
+            var findings: [String] = []
+            if !result.technologies.isEmpty {
+                findings.append("Technologies: \(result.technologies.joined(separator: ", "))")
+            }
+            if !result.statusIssues.isEmpty {
+                findings.append("Issues: \(result.statusIssues.joined(separator: ", "))")
+            }
+            
+            return WebScanResult(
+                type: "HTTP/HTTPS Analysis",
+                description: "HTTPx analysis: \(findings.joined(separator: " | "))",
+                url: targetURL,
+                severity: result.statusIssues.isEmpty ? .informational : .medium,
+                details: findings,
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    private func executeTestSSLScan(targetURL: String) async -> WebScanResult? {
+        guard targetURL.hasPrefix("https://") else {
+            return WebScanResult(
+                type: "SSL/TLS Deep Analysis",
+                description: "Target not using HTTPS - SSL/TLS analysis skipped",
+                url: targetURL,
+                severity: .high,
+                details: ["No HTTPS protocol", "SSL/TLS analysis not applicable"],
+                timestamp: Date()
+            )
+        }
+        
+        let result = await executeTestSSLCommand(targetURL: targetURL)
+        
+        if !result.vulnerabilities.isEmpty {
+            return WebScanResult(
+                type: "SSL/TLS Deep Analysis",
+                description: "TestSSL found SSL/TLS issues: \(result.vulnerabilities.prefix(2).joined(separator: ", "))",
+                url: targetURL,
+                severity: .medium,
+                details: result.vulnerabilities,
+                timestamp: Date()
+            )
+        } else if !result.output.isEmpty && result.output.contains(where: { $0.contains("Done") }) {
+            return WebScanResult(
+                type: "SSL/TLS Deep Analysis",
+                description: "TestSSL analysis completed - SSL/TLS configuration appears secure",
+                url: targetURL,
+                severity: .informational,
+                details: [],
+                timestamp: Date()
+            )
+        }
+        
+        return nil
+    }
+    
+    // MARK: - Tool Command Execution Methods
+    
+    private func executeNucleiCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        guard let nucleiPath = findWebToolPath("nuclei") else {
+            output.append("❌ Nuclei not found. Install with: go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest")
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: nucleiPath)
+        process.arguments = [
+            "-u", targetURL,
+            "-json",        // JSON output for parsing
+            "-silent",      // Silent mode
+            "-severity", "critical,high,medium",  // Important findings only
+            "-timeout", "30",
+            "-retries", "1",
+            "-rate-limit", "50"  // Conservative rate limiting
+        ]
+        
+        output.append("🚀 Starting Nuclei vulnerability scan with 9000+ templates...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ Nuclei scan timed out after 10 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                
+                for line in lines.filter({ !$0.isEmpty }) {
+                    // Parse JSON output from Nuclei
+                    if let jsonData = line.data(using: .utf8),
+                       let nucleiResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        
+                        if let templateID = nucleiResult["template-id"] as? String,
+                           let info = nucleiResult["info"] as? [String: Any],
+                           let name = info["name"] as? String,
+                           let severity = info["severity"] as? String {
+                            
+                            let vulnDesc = "\(templateID): \(name) [\(severity.uppercased())]"
+                            vulnerabilities.append(vulnDesc)
+                            output.append("✅ Found: \(vulnDesc)")
+                        }
+                    } else {
+                        output.append(line)
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ Nuclei scan completed with \(vulnerabilities.count) findings")
+            
+        } catch {
+            output.append("❌ Error executing Nuclei: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeFeroxbusterCommand(targetURL: String) async -> (output: [String], files: [String], success: Bool) {
+        var output: [String] = []
+        var files: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        guard let feroxPath = findWebToolPath("feroxbuster") else {
+            output.append("❌ Feroxbuster not found. Install with: cargo install feroxbuster")
+            return (output, files, false)
+        }
+        
+        let wordlist = createWebWordlist()
+        
+        process.executableURL = URL(fileURLWithPath: feroxPath)
+        process.arguments = [
+            "-u", targetURL,
+            "-w", wordlist,
+            "-d", "3",        // Depth of 3
+            "-t", "50",       // 50 threads
+            "--timeout", "30",
+            "-q",             // Quiet mode
+            "--json"          // JSON output
+        ]
+        
+        output.append("🚀 Starting Feroxbuster recursive directory scan...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ Feroxbuster scan timed out after 10 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                
+                for line in lines.filter({ !$0.isEmpty }) {
+                    if let jsonData = line.data(using: .utf8),
+                       let feroxResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        
+                        if let url = feroxResult["url"] as? String,
+                           let status = feroxResult["status"] as? Int,
+                           status == 200 || status == 301 || status == 302 {
+                            files.append("\(url) [Status: \(status)]")
+                            output.append("✅ Found: \(url) [Status: \(status)]")
+                        }
+                    } else {
+                        output.append(line)
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ Feroxbuster scan completed with \(files.count) findings")
+            
+            return (output, files, true)
+            
+        } catch {
+            output.append("❌ Error executing Feroxbuster: \(error.localizedDescription)")
+            return (output, files, false)
+        }
+    }
+    
+    private func executeXSSStrikeCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        // Check if XSStrike is installed
+        let xssStrikePath = "/opt/xsstrike/xsstrike.py"
+        guard FileManager.default.fileExists(atPath: xssStrikePath) else {
+            output.append("❌ XSStrike not found. Install with: git clone https://github.com/s0md3v/XSStrike.git /opt/xsstrike")
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [
+            xssStrikePath,
+            "-u", targetURL,
+            "--crawl",      // Crawl for parameters
+            "--blind",      // Test for blind XSS
+            "--timeout", "30"
+        ]
+        
+        output.append("🚀 Starting XSStrike XSS detection scan...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ XSStrike scan timed out after 5 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse XSStrike output for vulnerabilities
+                for line in lines {
+                    let lowerLine = line.lowercased()
+                    if lowerLine.contains("xss") && (lowerLine.contains("vulnerable") || lowerLine.contains("found")) {
+                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ XSStrike scan completed")
+            
+        } catch {
+            output.append("❌ Error executing XSStrike: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeZAPCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        // Check for ZAP installation (Docker or native)
+        if FileManager.default.fileExists(atPath: "/usr/local/bin/docker") {
+            // Use Docker version
+            process.executableURL = URL(fileURLWithPath: "/usr/local/bin/docker")
+            process.arguments = [
+                "run", "--rm",
+                "owasp/zap2docker-stable",
+                "zap-baseline.py",
+                "-t", targetURL,
+                "-J", "zap-report.json"  // JSON output
+            ]
+        } else if let zapPath = findWebToolPath("zap.sh") {
+            // Use native installation
+            process.executableURL = URL(fileURLWithPath: zapPath)
+            process.arguments = [
+                "-cmd",
+                "-quickurl", targetURL,
+                "-quickout", "/tmp/zap-output.json"
+            ]
+        } else {
+            output.append("❌ OWASP ZAP not found. Install with: brew install --cask owasp-zap or use Docker")
+            return (output, vulnerabilities)
+        }
+        
+        output.append("🚀 Starting OWASP ZAP comprehensive scan...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            // Set timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 900_000_000_000) // 15 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ ZAP scan timed out after 15 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse ZAP output for vulnerabilities
+                for line in lines {
+                    if line.contains("WARN") || line.contains("FAIL") || line.contains("Medium") || line.contains("High") {
+                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ OWASP ZAP scan completed")
+            
+        } catch {
+            output.append("❌ Error executing OWASP ZAP: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeHTTPxCommand(targetURL: String) async -> (output: [String], technologies: [String], statusIssues: [String]) {
+        var output: [String] = []
+        var technologies: [String] = []
+        var statusIssues: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        guard let httpxPath = findWebToolPath("httpx") else {
+            output.append("❌ HTTPx not found. Install with: go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest")
+            return (output, technologies, statusIssues)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: httpxPath)
+        process.arguments = [
+            "-u", targetURL,
+            "-json",           // JSON output
+            "-title",          // Extract page titles
+            "-tech-detect",    // Technology detection
+            "-status-code",    // Include status codes
+            "-content-length", // Content length
+            "-response-time",  // Response time
+            "-silent"
+        ]
+        
+        output.append("🚀 Starting HTTPx HTTP/HTTPS analysis...")
+        output.append("Target: \(targetURL)")
+        
+        do {
+            try process.run()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                
+                for line in lines.filter({ !$0.isEmpty }) {
+                    if let jsonData = line.data(using: .utf8),
+                       let httpxResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        
+                        // Extract technologies
+                        if let techs = httpxResult["tech"] as? [String], !techs.isEmpty {
+                            technologies.append(contentsOf: techs)
+                        }
+                        
+                        // Check for status code issues
+                        if let statusCode = httpxResult["status_code"] as? Int {
+                            if statusCode >= 400 {
+                                statusIssues.append("HTTP \(statusCode) error")
+                            }
+                        }
+                        
+                        // Check for suspicious titles
+                        if let title = httpxResult["title"] as? String {
+                            if title.lowercased().contains("error") || title.lowercased().contains("exception") {
+                                statusIssues.append("Error page detected: \(title)")
+                            }
+                        }
+                    }
+                    output.append(line)
+                }
+            }
+            
+            process.waitUntilExit()
+            output.append("✅ HTTPx analysis completed")
+            
+        } catch {
+            output.append("❌ Error executing HTTPx: \(error.localizedDescription)")
+        }
+        
+        return (output, technologies, statusIssues)
+    }
+    
+    private func executeTestSSLCommand(targetURL: String) async -> (output: [String], vulnerabilities: [String]) {
+        var output: [String] = []
+        var vulnerabilities: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        // Check if TestSSL.sh is installed
+        let testSSLPath = "/opt/testssl/testssl.sh"
+        guard FileManager.default.fileExists(atPath: testSSLPath) else {
+            output.append("❌ TestSSL.sh not found. Install with: git clone https://github.com/drwetter/testssl.sh.git /opt/testssl")
+            return (output, vulnerabilities)
+        }
+        
+        // Extract host from URL
+        guard let url = URL(string: targetURL), let host = url.host else {
+            output.append("❌ Invalid URL for SSL testing")
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: testSSLPath)
+        process.arguments = [
+            "--fast",           // Fast scan mode
+            "--quiet",          // Reduce output
+            "--jsonfile", "/tmp/testssl-\(UUID().uuidString).json",
+            host
+        ]
+        
+        output.append("🚀 Starting TestSSL.sh comprehensive SSL/TLS analysis...")
+        output.append("Target: \(host)")
+        
+        do {
+            try process.run()
+            
+            // Set timeout
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                if process.isRunning {
+                    process.terminate()
+                    output.append("⏰ TestSSL scan timed out after 10 minutes")
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let outputString = String(data: data, encoding: .utf8) {
+                let lines = outputString.components(separatedBy: .newlines)
+                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                
+                // Parse TestSSL output for vulnerabilities
+                for line in lines {
+                    let lowerLine = line.lowercased()
+                    if (lowerLine.contains("vulnerable") || lowerLine.contains("weak") || lowerLine.contains("insecure")) &&
+                       !lowerLine.contains("not vulnerable") {
+                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+            
+            process.waitUntilExit()
+            timeoutTask.cancel()
+            output.append("✅ TestSSL.sh analysis completed")
+            
+        } catch {
+            output.append("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    // MARK: - Timeout Helper
+    
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError()
+            }
+            
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+    
+    private struct TimeoutError: Error, LocalizedError {
+        var errorDescription: String? {
+            return "Operation timed out"
+        }
     }
     
     // Method to add vulnerabilities from any source
@@ -286,7 +1527,7 @@ extension NetworkPortScanResult {
 
 extension WebScanResult {
     static var mock: WebScanResult {
-        WebScanResult(type: "SQL Injection", description: "Found a potential SQL injection point.", url: "https://example.com/login", severity: .high)
+        WebScanResult(type: "SQL Injection", description: "Found a potential SQL injection point.", url: "https://example.com/login", severity: .high, details: ["Injection point in login form"], timestamp: Date())
     }
 }
 

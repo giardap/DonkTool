@@ -229,6 +229,11 @@ struct AttackCardExpandedContent: View {
                 }
             }
             
+            // Findings Summary
+            if session.status == .completed || session.status == .failed {
+                FindingsSummaryView(session: session)
+            }
+            
             // Console output
             if !session.outputLines.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -262,6 +267,227 @@ struct AttackCardExpandedContent: View {
         case .completed: return .green
         case .failed: return .red
         case .stopped: return .gray
+        }
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let hours = Int(duration) / 3600
+        let minutes = Int(duration) % 3600 / 60
+        let seconds = Int(duration) % 60
+        
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%02d:%02d", minutes, seconds)
+        }
+    }
+}
+
+struct FindingsSummaryView: View {
+    let session: AttackSession
+    @Environment(AppState.self) private var appState
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Attack Findings")
+                .font(.headerTertiary)
+            
+            if let attackResult = getAttackResult() {
+                // Attack completion status
+                HStack {
+                    Image(systemName: attackResult.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundColor(attackResult.success ? .green : .red)
+                    
+                    Text(attackResult.success ? "Attack Completed Successfully" : "Attack Failed or Found Issues")
+                        .font(.bodySecondary)
+                        .foregroundColor(attackResult.success ? .green : .red)
+                }
+                
+                // Files discovered
+                if !attackResult.files.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(.blue)
+                            Text("Files/Directories Found")
+                                .font(.bodySecondary)
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Text("\(attackResult.files.count)")
+                                .font(.captionPrimary)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(attackResult.files.prefix(5), id: \.self) { file in
+                                    HStack {
+                                        Text("•")
+                                            .foregroundColor(.blue)
+                                        Text(file)
+                                            .font(.codeSmall)
+                                            .foregroundColor(.primary)
+                                    }
+                                }
+                                if attackResult.files.count > 5 {
+                                    Text("... and \(attackResult.files.count - 5) more")
+                                        .font(.captionPrimary)
+                                        .foregroundColor(.secondary)
+                                        .italic()
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 80)
+                    }
+                    .padding(8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                
+                // Vulnerabilities found
+                if !attackResult.vulnerabilities.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text("Vulnerabilities Found")
+                                .font(.bodySecondary)
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Text("\(attackResult.vulnerabilities.count)")
+                                .font(.captionPrimary)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(attackResult.vulnerabilities.prefix(3), id: \.id) { vuln in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text(vuln.type)
+                                                .font(.bodySecondary)
+                                                .fontWeight(.medium)
+                                            
+                                            Spacer()
+                                            
+                                            Text(vuln.severity.uppercased())
+                                                .font(.captionPrimary)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(severityColor(vuln.severity))
+                                        }
+                                        
+                                        Text(vuln.description)
+                                            .font(.captionPrimary)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    .padding(6)
+                                    .background(Color.red.opacity(0.05))
+                                    .cornerRadius(4)
+                                }
+                                if attackResult.vulnerabilities.count > 3 {
+                                    Text("... and \(attackResult.vulnerabilities.count - 3) more")
+                                        .font(.captionPrimary)
+                                        .foregroundColor(.secondary)
+                                        .italic()
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 120)
+                    }
+                    .padding(8)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                
+                // Credentials found
+                if !attackResult.credentials.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "key.fill")
+                                .foregroundColor(.orange)
+                            Text("Credentials Found")
+                                .font(.bodySecondary)
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Text("\(attackResult.credentials.count)")
+                                .font(.captionPrimary)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Text("Valid credentials discovered during brute force attack")
+                            .font(.captionPrimary)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                
+                // Attack duration
+                HStack {
+                    Image(systemName: "clock.fill")
+                        .foregroundColor(.secondary)
+                    Text("Duration:")
+                        .font(.bodySecondary)
+                    Text(formatDuration(attackResult.duration))
+                        .font(.bodySecondary)
+                        .fontWeight(.medium)
+                }
+                
+                // Show summary if no specific findings
+                if attackResult.files.isEmpty && attackResult.vulnerabilities.isEmpty && attackResult.credentials.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                            Text("No Security Issues Found")
+                                .font(.bodySecondary)
+                                .fontWeight(.medium)
+                        }
+                        
+                        Text("The target appears to be secure against this type of attack. No vulnerabilities, exposed files, or weak credentials were discovered.")
+                            .font(.captionPrimary)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                
+            } else {
+                // Still running or no result available
+                HStack {
+                    Image(systemName: "clock.fill")
+                        .foregroundColor(.orange)
+                    Text("Attack in progress...")
+                        .font(.bodySecondary)
+                        .foregroundColor(.orange)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(8)
+    }
+    
+    private func getAttackResult() -> AttackResult? {
+        return appState.attackFramework.attackHistory.first { $0.sessionId == session.sessionId }
+    }
+    
+    private func severityColor(_ severity: String) -> Color {
+        switch severity.lowercased() {
+        case "critical": return .red
+        case "high": return .orange
+        case "medium": return .yellow
+        case "low": return .blue
+        default: return .gray
         }
     }
     
