@@ -931,6 +931,21 @@ class AttackFramework {
         // Use the same wordlist as dirb for consistency
         let wordlistPath = await createDirbWordlist()
         
+        // Validate wordlist path
+        if wordlistPath.isEmpty {
+            output.append("❌ Error: No wordlist available for directory enumeration")
+            sendRealTimeOutput("❌ Error: No wordlist available for directory enumeration", sessionId: session.sessionId)
+            return (output, files, false)
+        }
+        
+        if !FileManager.default.fileExists(atPath: wordlistPath) {
+            output.append("❌ Error: Wordlist not found at path: \(wordlistPath)")
+            sendRealTimeOutput("❌ Error: Wordlist not found at path: \(wordlistPath)", sessionId: session.sessionId)
+            return (output, files, false)
+        }
+        
+        sendRealTimeOutput("📝 Using wordlist: \(wordlistPath)", sessionId: session.sessionId)
+        
         let process = Process()
         let pipe = Pipe()
         
@@ -2229,11 +2244,41 @@ class AttackFramework {
         
         do {
             try wordlistContent.write(to: wordlistPath, atomically: true, encoding: .utf8)
+            print("✅ Created wordlist at: \(wordlistPath.path)")
+            print("📁 Wordlist contains \(commonPaths.count) entries")
             return wordlistPath.path
         } catch {
-            print("Error creating wordlist: \(error)")
-            // Return empty wordlist as fallback - dirb will use its internal list
-            return ""
+            print("❌ Error creating wordlist at \(wordlistPath.path): \(error)")
+            
+            // Try creating a fallback wordlist in the current working directory
+            let currentDir = FileManager.default.currentDirectoryPath
+            let fallbackPath = "\(currentDir)/dirb_wordlist.txt"
+            
+            do {
+                try wordlistContent.write(toFile: fallbackPath, atomically: true, encoding: .utf8)
+                print("✅ Created fallback wordlist at: \(fallbackPath)")
+                return fallbackPath
+            } catch {
+                print("❌ Failed to create fallback wordlist: \(error)")
+                print("🔧 Attempting to use system wordlist...")
+                
+                // Final fallback: try to find any system wordlist
+                let systemWordlists = [
+                    "/usr/share/wordlists/dirb/common.txt",
+                    "/usr/local/share/dirb/wordlists/common.txt",
+                    "/opt/homebrew/share/dirb/wordlists/common.txt"
+                ]
+                
+                for path in systemWordlists {
+                    if FileManager.default.fileExists(atPath: path) {
+                        print("✅ Using system wordlist: \(path)")
+                        return path
+                    }
+                }
+                
+                print("❌ No wordlist available - returning empty path")
+                return ""
+            }
         }
     }
 }

@@ -423,6 +423,8 @@ struct DetailView: View {
                 ModernNetworkScannerView()
             case .webTesting:
                 WebTestingView()
+            case .packetSniffer:
+                PacketSnifferView()
             case .bluetoothSecurity:
                 MacOSBluetoothSecurityView()
             case .dosStressTesting:

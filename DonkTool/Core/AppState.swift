@@ -176,6 +176,7 @@ class AppState {
         case vulnerabilityDatabase
         case networkScanner
         case webTesting
+        case packetSniffer
         case bluetoothSecurity
         case dosStressTesting
         case metasploitConsole
@@ -191,6 +192,7 @@ class AppState {
             case .vulnerabilityDatabase: return "Vulnerability Database"
             case .networkScanner: return "Network Scanner"
             case .webTesting: return "Web Testing"
+            case .packetSniffer: return "Packet Sniffer"
             case .bluetoothSecurity: return "Bluetooth Security"
             case .dosStressTesting: return "DoS/Stress Testing"
             case .metasploitConsole: return "Metasploit Console"
@@ -208,6 +210,7 @@ class AppState {
             case .vulnerabilityDatabase: return "shield.checkerboard"
             case .networkScanner: return "network"
             case .webTesting: return "globe"
+            case .packetSniffer: return "point.3.connected.trianglepath.dotted"
             case .bluetoothSecurity: return "antenna.radiowaves.left.and.right"
             case .dosStressTesting: return "exclamationmark.triangle.fill"
             case .metasploitConsole: return "terminal.fill"

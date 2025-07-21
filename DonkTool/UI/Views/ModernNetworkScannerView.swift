@@ -514,7 +514,7 @@ struct ModernNetworkScannerView: View {
                     ToolRequirement(name: "dirb", type: .tool, description: "Web directory scanner"),
                     ToolRequirement(name: "gobuster", type: .optional, description: "Directory enumeration tool")
                 ],
-                commands: ["dirb http://TARGET:PORT/", "gobuster dir -u http://TARGET:PORT/ -w wordlist.txt"],
+                commands: ["dirb http://TARGET:PORT/", "gobuster dir -u http://TARGET:PORT/ -w WORDLIST_PATH"],
                 references: ["https://tools.kali.org/web-applications/dirb"]
             ))
             vectors.append(AttackVector(
@@ -579,7 +579,7 @@ struct ModernNetworkScannerView: View {
                     ToolRequirement(name: "dirb", type: .tool, description: "Web directory scanner"),
                     ToolRequirement(name: "gobuster", type: .optional, description: "Directory enumeration tool")
                 ],
-                commands: ["dirb https://TARGET:PORT/", "gobuster dir -u https://TARGET:PORT/ -w wordlist.txt"],
+                commands: ["dirb https://TARGET:PORT/", "gobuster dir -u https://TARGET:PORT/ -w WORDLIST_PATH"],
                 references: ["https://tools.kali.org/web-applications/dirb"]
             ))
             vectors.append(AttackVector(
