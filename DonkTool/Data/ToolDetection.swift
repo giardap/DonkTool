@@ -358,20 +358,34 @@ class ToolDetection {
         let pythonModules = ["sqlmap", "dirsearch", "sslyze"]
         
         if pythonModules.contains(toolName.lowercased()) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-            process.arguments = ["-m", toolName, "--help"]
+            // Try multiple Python versions
+            let pythonPaths = ["/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"]
             
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            
-            do {
-                try process.run()
-                process.waitUntilExit()
-                return process.terminationStatus == 0
-            } catch {
-                return false
+            for pythonPath in pythonPaths {
+                if !FileManager.default.fileExists(atPath: pythonPath) {
+                    continue
+                }
+                
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: pythonPath)
+                
+                // Use --version instead of --help for better compatibility
+                let testArgs = toolName.lowercased() == "sqlmap" ? ["--version"] : ["--help"]
+                process.arguments = ["-m", toolName] + testArgs
+                
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    if process.terminationStatus == 0 {
+                        return true
+                    }
+                } catch {
+                    continue
+                }
             }
         }
         
@@ -391,6 +405,37 @@ class ToolDetection {
     }
     
     private func getToolExecutablePath(_ toolName: String) -> String? {
+        // Special handling for Python-based tools
+        if toolName.lowercased() == "sqlmap" {
+            // First try direct command
+            if let directPath = getDirectToolPath(toolName) {
+                return directPath
+            }
+            
+            // Try Python module approach
+            let pythonProcess = Process()
+            pythonProcess.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            pythonProcess.arguments = ["-m", "sqlmap", "--version"]
+            
+            let testPipe = Pipe()
+            pythonProcess.standardOutput = testPipe
+            pythonProcess.standardError = testPipe
+            
+            do {
+                try pythonProcess.run()
+                pythonProcess.waitUntilExit()
+                if pythonProcess.terminationStatus == 0 {
+                    return "/usr/bin/python3" // Will be handled specially in execution
+                }
+            } catch {
+                // Continue to other methods
+            }
+        }
+        
+        return getDirectToolPath(toolName)
+    }
+    
+    private func getDirectToolPath(_ toolName: String) -> String? {
         // Try 'which' first
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")

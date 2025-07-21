@@ -1240,24 +1240,72 @@ class AttackFramework {
         
         process.standardOutput = pipe
         process.standardError = pipe
-        guard let sqlmapPath = toolDetection.getToolPath("sqlmap") else {
-            let errorMsg = "Error: SQLMap not found in system PATH"
+        // Check if SQLMap is available via different methods
+        var sqlmapPath: String?
+        var usePython = false
+        
+        // First try direct command
+        sqlmapPath = toolDetection.getToolPath("sqlmap")
+        
+        // If not found, try Python module approach
+        if sqlmapPath == nil {
+            // Check if sqlmap is available as Python module
+            let pythonProcess = Process()
+            pythonProcess.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            pythonProcess.arguments = ["-m", "sqlmap", "--version"]
+            
+            let testPipe = Pipe()
+            pythonProcess.standardOutput = testPipe
+            pythonProcess.standardError = testPipe
+            
+            do {
+                try pythonProcess.run()
+                pythonProcess.waitUntilExit()
+                if pythonProcess.terminationStatus == 0 {
+                    sqlmapPath = "/usr/bin/python3"
+                    usePython = true
+                    print("✅ SQLMap found as Python module")
+                }
+            } catch {
+                print("❌ Failed to test SQLMap Python module")
+            }
+        }
+        
+        guard let finalSqlmapPath = sqlmapPath else {
+            let errorMsg = "Error: SQLMap not found. Install with: brew install sqlmap or pip3 install sqlmap"
             print("❌ \(errorMsg)")
             output.append(errorMsg)
             sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
             return (output, vulnerabilities)
         }
         
-        print("✅ SQLMap found at: \(sqlmapPath)")
-        process.executableURL = URL(fileURLWithPath: sqlmapPath)
-        process.arguments = [
-            "-u", "http://\(target):\(port)/?id=1",
-            "--batch",  // Non-interactive mode
-            "--level=1",
-            "--risk=1"
-        ]
+        print("✅ SQLMap found at: \(finalSqlmapPath)")
+        process.executableURL = URL(fileURLWithPath: finalSqlmapPath)
         
-        let commandLine = "sqlmap \(process.arguments?.joined(separator: " ") ?? "")"
+        if usePython {
+            process.arguments = [
+                "-m", "sqlmap",
+                "-u", "http://\(target):\(port)/?id=1",
+                "--batch",  // Non-interactive mode
+                "--level=1",
+                "--risk=1",
+                "--timeout=30",
+                "--retries=1"
+            ]
+        } else {
+            process.arguments = [
+                "-u", "http://\(target):\(port)/?id=1",
+                "--batch",  // Non-interactive mode
+                "--level=1",
+                "--risk=1",
+                "--timeout=30",
+                "--retries=1"
+            ]
+        }
+        
+        let commandLine = usePython ? 
+            "python3 -m sqlmap \(process.arguments?.dropFirst(2).joined(separator: " ") ?? "")" :
+            "sqlmap \(process.arguments?.joined(separator: " ") ?? "")"
         print("🚀 Starting SQLMap with arguments: \(process.arguments ?? [])")
         sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
         sendRealTimeOutput("", sessionId: session.sessionId)
@@ -1323,6 +1371,28 @@ class AttackFramework {
             sendRealTimeOutput("", sessionId: session.sessionId)
             sendRealTimeOutput(exitMessage, sessionId: session.sessionId)
             
+            // Add helpful error messages based on exit codes
+            if process.terminationStatus != 0 {
+                switch process.terminationStatus {
+                case 127:
+                    let helpMsg = "💡 Command not found. Try: brew install sqlmap or pip3 install sqlmap"
+                    sendRealTimeOutput(helpMsg, sessionId: session.sessionId)
+                    output.append(helpMsg)
+                case 1:
+                    let helpMsg = "💡 SQLMap error - check target URL and parameters"
+                    sendRealTimeOutput(helpMsg, sessionId: session.sessionId)
+                    output.append(helpMsg)
+                case 2:
+                    let helpMsg = "💡 SQLMap usage error - invalid parameters"
+                    sendRealTimeOutput(helpMsg, sessionId: session.sessionId)
+                    output.append(helpMsg)
+                default:
+                    let helpMsg = "💡 SQLMap terminated unexpectedly. Check logs for details."
+                    sendRealTimeOutput(helpMsg, sessionId: session.sessionId)
+                    output.append(helpMsg)
+                }
+            }
+            
             // Get final output for parsing (this might be empty since we read it in real-time)
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let result = String(data: data, encoding: .utf8) ?? ""
@@ -1349,6 +1419,11 @@ class AttackFramework {
             let errorMsg = "Error executing SQLMap: \(error.localizedDescription)"
             output.append(errorMsg)
             sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            
+            // Add installation guidance
+            let installMsg = "💡 Installation help: brew install sqlmap or pip3 install sqlmap"
+            sendRealTimeOutput(installMsg, sessionId: session.sessionId)
+            output.append(installMsg)
         }
         
         return (output, vulnerabilities)
@@ -1363,8 +1438,34 @@ class AttackFramework {
         
         process.standardOutput = pipe
         process.standardError = pipe
-        guard let niktoPath = toolDetection.getToolPath("nikto") else {
-            let errorMsg = "Error: Nikto not found in system PATH"
+        
+        // Check if Nikto is available via different methods
+        var niktoPath: String?
+        var usePerl = false
+        
+        // First try direct command
+        niktoPath = toolDetection.getToolPath("nikto")
+        
+        // If not found, try Perl script approach
+        if niktoPath == nil {
+            // Try common Nikto installation paths
+            let niktoScriptPaths = [
+                "/usr/local/bin/nikto.pl",
+                "/opt/homebrew/bin/nikto.pl", 
+                "/usr/bin/nikto.pl"
+            ]
+            
+            for scriptPath in niktoScriptPaths {
+                if FileManager.default.fileExists(atPath: scriptPath) {
+                    niktoPath = "/usr/bin/perl"
+                    usePerl = true
+                    break
+                }
+            }
+        }
+        
+        guard let finalNiktoPath = niktoPath else {
+            let errorMsg = "Error: Nikto not found. Install with: brew install nikto"
             output.append(errorMsg)
             sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
             sendRealTimeOutput("Searched paths: /usr/bin, /usr/local/bin, /opt/homebrew/bin", sessionId: session.sessionId)
@@ -1372,8 +1473,8 @@ class AttackFramework {
             return (output, vulnerabilities)
         }
         
-        sendRealTimeOutput("Found Nikto at: \(niktoPath)", sessionId: session.sessionId)
-        process.executableURL = URL(fileURLWithPath: niktoPath)
+        sendRealTimeOutput("Found Nikto at: \(finalNiktoPath)", sessionId: session.sessionId)
+        process.executableURL = URL(fileURLWithPath: finalNiktoPath)
         
         // Construct proper target URL
         let targetURL: String

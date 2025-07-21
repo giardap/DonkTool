@@ -26,7 +26,7 @@ class RealBluetoothSecurityFramework: NSObject, CBCentralManagerDelegate, CBPeri
     private let vulnerabilityScanner = RealBluetoothVulnerabilityScanner()
     private let exploitEngine = RealBluetoothExploitEngine()
     private let toolsManager = BluetoothToolsManager()
-    private let cveDatabase = LiveBluetoothCVEDatabase()
+    private let cveDatabase = LiveBluetoothCVEDatabase.shared
     
     override init() {
         super.init()

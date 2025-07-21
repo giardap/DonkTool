@@ -435,6 +435,8 @@ struct DetailView: View {
                 ActiveAttacksView()
             case .reporting:
                 ReportingView()
+            case .scriptLoader:
+                ScriptLoaderView()
             case .settings:
                 SettingsView()
             }

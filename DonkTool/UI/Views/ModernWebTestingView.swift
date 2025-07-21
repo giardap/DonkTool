@@ -106,12 +106,28 @@ struct ModernWebTestingView: View {
                     .fontWeight(.semibold)
                 
                 VStack(spacing: 12) {
-                    TextField("https://example.com", text: $targetURL)
+                    TextField("https://example.com or 192.168.1.1", text: $targetURL)
                         .textFieldStyle(.roundedBorder)
                         .disabled(appState.isWebScanning)
+                        .onSubmit {
+                            autoFormatURL()
+                        }
+                    
+                    // URL format guidance
+                    Text("Supports: https://example.com, http://192.168.1.1, or just example.com (auto-formatted)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
                     
                     HStack {
-                        Button("Validate URL") {
+                        Button("Auto-Format URL") {
+                            autoFormatURL()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button("Validate") {
                             validateURL()
                         }
                         .font(.caption)
@@ -127,6 +143,14 @@ struct ModernWebTestingView: View {
                                 Text("Valid")
                                     .font(.caption)
                                     .foregroundColor(.green)
+                            }
+                        } else if !targetURL.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Needs formatting")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
                             }
                         }
                     }
@@ -330,7 +354,9 @@ struct ModernWebTestingView: View {
     }
     
     private var isValidURL: Bool {
-        URL(string: targetURL) != nil && targetURL.contains("://")
+        guard !targetURL.isEmpty else { return false }
+        let normalized = normalizeURL(targetURL)
+        return URL(string: normalized) != nil && normalized.contains("://")
     }
     
     private var vulnerableTests: Int {
@@ -340,8 +366,14 @@ struct ModernWebTestingView: View {
     private func startWebTest() {
         guard !targetURL.isEmpty, !selectedTests.isEmpty else { return }
         
+        // Auto-format URL before starting test
+        let normalizedURL = normalizeURL(targetURL)
+        if targetURL != normalizedURL {
+            targetURL = normalizedURL
+        }
+        
         backgroundWebManager.startWebTest(
-            targetURL: targetURL,
+            targetURL: normalizedURL,
             tests: selectedTests
         ) { results in
             DispatchQueue.main.async {
@@ -362,7 +394,40 @@ struct ModernWebTestingView: View {
     }
     
     private func validateURL() {
-        // URL validation logic
+        guard !targetURL.isEmpty else { return }
+        
+        let normalized = normalizeURL(targetURL)
+        if URL(string: normalized) != nil {
+            // URL is valid, optionally auto-format it
+            if targetURL != normalized {
+                targetURL = normalized
+            }
+        }
+    }
+    
+    private func autoFormatURL() {
+        guard !targetURL.isEmpty else { return }
+        let normalized = normalizeURL(targetURL)
+        targetURL = normalized
+    }
+    
+    private func normalizeURL(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If already has protocol, return as-is
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            return trimmed
+        }
+        
+        // Check if it looks like an IP address
+        let ipRegex = try! NSRegularExpression(pattern: "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(:\\d+)?$")
+        let isIP = ipRegex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) != nil
+        
+        // For IP addresses, default to HTTP (often local/internal)
+        // For domains, default to HTTPS (more common for public sites)
+        let defaultProtocol = isIP ? "http://" : "https://"
+        
+        return defaultProtocol + trimmed
     }
     
     private func exportWebResults(format: WebExportFormat) {

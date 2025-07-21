@@ -132,7 +132,7 @@ class AppState {
     // Advanced Bluetooth Shell with Live CVE Integration
     var bluetoothShellActive = false
     var currentBluetoothTarget: String = ""
-    var liveCVEDatabase = LiveBluetoothCVEDatabase()
+    var liveCVEDatabase = LiveBluetoothCVEDatabase.shared
     var bluetoothExploitEngine: RealBluetoothExploitEngine?
     var bluetoothShell: BluetoothShell?
     var recentExploitResults: [RealExploitResult] = []
@@ -182,6 +182,7 @@ class AppState {
         case osintDashboard
         case activeAttacks
         case reporting
+        case scriptLoader
         case settings
         
         var title: String {
@@ -196,6 +197,7 @@ class AppState {
             case .osintDashboard: return "OSINT Dashboard"
             case .activeAttacks: return "Active Attacks"
             case .reporting: return "Reporting"
+            case .scriptLoader: return "Script Loader"
             case .settings: return "Settings"
             }
         }
@@ -212,6 +214,7 @@ class AppState {
             case .osintDashboard: return "binoculars.fill"
             case .activeAttacks: return "bolt.badge.clock"
             case .reporting: return "doc.text"
+            case .scriptLoader: return "doc.text.fill"
             case .settings: return "gear"
             }
         }
@@ -339,7 +342,7 @@ class AppState {
             )
             
             // Find or create target for this Bluetooth device
-            let deviceIdentifier = btVuln.device
+            let deviceIdentifier = btVuln.deviceAddress
             
             if let existingTargetIndex = targets.firstIndex(where: { $0.ipAddress == deviceIdentifier }) {
                 // Add to existing target
@@ -751,14 +754,45 @@ class AppState {
     }
     
     private func executeHTTPHeaderTest(targetURL: String) async -> WebScanResult? {
+        // Add console output for transparency
+        await updateVerboseOutput("🔍 Starting HTTP Header Security Analysis...")
+        await updateVerboseOutput("Target: \(targetURL)")
+        await updateVerboseOutput("")
+        
         let headers = await getHTTPHeaders(targetURL: targetURL)
+        
+        // Show discovered headers in console
+        await updateVerboseOutput("📋 Discovered HTTP Headers:")
+        if headers.isEmpty {
+            await updateVerboseOutput("  ⚠️ No headers could be retrieved")
+        } else {
+            for header in headers.sorted() {
+                await updateVerboseOutput("  • \(header)")
+            }
+        }
+        await updateVerboseOutput("")
         
         let requiredHeaders = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"]
         let missingHeaders = requiredHeaders.filter { requiredHeader in
             !headers.contains { $0.lowercased().contains(requiredHeader.lowercased()) }
         }
         
+        // Show security analysis in console
+        await updateVerboseOutput("🔐 Security Header Analysis:")
+        for header in requiredHeaders {
+            let isPresent = headers.contains { $0.lowercased().contains(header.lowercased()) }
+            let status = isPresent ? "✅ Present" : "❌ Missing"
+            await updateVerboseOutput("  \(status): \(header)")
+        }
+        await updateVerboseOutput("")
+        
         if !missingHeaders.isEmpty {
+            await updateVerboseOutput("⚠️ Security Issues Found:")
+            for header in missingHeaders {
+                await updateVerboseOutput("  • Missing: \(header)")
+            }
+            await updateVerboseOutput("💡 Recommendation: Add missing security headers to improve protection")
+            
             return WebScanResult(
                 type: "HTTP Header Security",
                 description: "Missing security headers: \(missingHeaders.joined(separator: ", "))",
@@ -768,6 +802,9 @@ class AppState {
                 timestamp: Date()
             )
         } else {
+            await updateVerboseOutput("✅ All required security headers are present")
+            await updateVerboseOutput("🛡️ Website has good header security configuration")
+            
             return WebScanResult(
                 type: "HTTP Header Security",
                 description: "All required security headers are present",
@@ -780,7 +817,20 @@ class AppState {
     }
     
     private func executeSSLTest(targetURL: String) async -> WebScanResult? {
+        // Add console output for transparency
+        await updateVerboseOutput("🔒 Starting Basic SSL/TLS Security Check...")
+        await updateVerboseOutput("Target: \(targetURL)")
+        await updateVerboseOutput("")
+        
         if !targetURL.hasPrefix("https://") {
+            await updateVerboseOutput("⚠️ Protocol Analysis:")
+            await updateVerboseOutput("  • Protocol: HTTP (insecure)")
+            await updateVerboseOutput("  • Encryption: None")
+            await updateVerboseOutput("  • Data Protection: Plaintext transmission")
+            await updateVerboseOutput("")
+            await updateVerboseOutput("❌ CRITICAL: Website not using HTTPS encryption")
+            await updateVerboseOutput("💡 Recommendation: Implement SSL/TLS certificate and redirect HTTP to HTTPS")
+            
             return WebScanResult(
                 type: "SSL/TLS Configuration",
                 description: "Website not using HTTPS encryption",
@@ -792,11 +842,41 @@ class AppState {
         }
         
         // Basic SSL check
-        guard let url = URL(string: targetURL) else { return nil }
+        guard let url = URL(string: targetURL) else { 
+            await updateVerboseOutput("❌ Invalid URL format for SSL testing")
+            return nil 
+        }
+        
+        await updateVerboseOutput("🔍 Attempting HTTPS connection...")
         
         do {
             let (_, response) = try await URLSession.shared.data(from: url)
             if let httpResponse = response as? HTTPURLResponse {
+                await updateVerboseOutput("✅ SSL/TLS Connection Analysis:")
+                await updateVerboseOutput("  • HTTPS Connection: Successful")
+                await updateVerboseOutput("  • Status Code: \(httpResponse.statusCode)")
+                await updateVerboseOutput("  • SSL Certificate: Valid (basic check)")
+                await updateVerboseOutput("  • Protocol: HTTPS")
+                
+                // Check for security headers
+                let securityHeaders = httpResponse.allHeaderFields.keys.compactMap { $0 as? String }
+                    .filter { header in
+                        let lowerHeader = header.lowercased()
+                        return lowerHeader.contains("strict-transport-security") ||
+                               lowerHeader.contains("content-security-policy") ||
+                               lowerHeader.contains("x-frame-options")
+                    }
+                
+                if !securityHeaders.isEmpty {
+                    await updateVerboseOutput("  • Security Headers: Present (\(securityHeaders.count) found)")
+                } else {
+                    await updateVerboseOutput("  • Security Headers: Missing or limited")
+                }
+                
+                await updateVerboseOutput("")
+                await updateVerboseOutput("✅ Basic SSL check passed - connection secured")
+                await updateVerboseOutput("💡 Note: For comprehensive SSL analysis, use TestSSL.sh tool")
+                
                 return WebScanResult(
                     type: "SSL/TLS Configuration",
                     description: "HTTPS connection successful - basic SSL check passed",
@@ -807,6 +887,16 @@ class AppState {
                 )
             }
         } catch {
+            await updateVerboseOutput("❌ SSL/TLS Connection Failed:")
+            await updateVerboseOutput("  • Error: \(error.localizedDescription)")
+            await updateVerboseOutput("  • Possible causes:")
+            await updateVerboseOutput("    - Invalid SSL certificate")
+            await updateVerboseOutput("    - Expired certificate")
+            await updateVerboseOutput("    - Self-signed certificate")
+            await updateVerboseOutput("    - Network connectivity issues")
+            await updateVerboseOutput("")
+            await updateVerboseOutput("💡 Recommendation: Check certificate validity and configuration")
+            
             return WebScanResult(
                 type: "SSL/TLS Configuration",
                 description: "SSL/TLS connection failed: \(error.localizedDescription)",
@@ -1993,18 +2083,57 @@ class AppState {
         var output: [String] = []
         var vulnerabilities: [String] = []
         
+        // Add console output for transparency
+        await updateVerboseOutput("🔍 Starting TestSSL.sh Comprehensive Analysis...")
+        await updateVerboseOutput("Target: \(targetURL)")
+        await updateVerboseOutput("")
+        
         let process = Process()
         let pipe = Pipe()
         
         process.standardOutput = pipe
         process.standardError = pipe
         
-        // Check if TestSSL.sh is installed
-        let testSSLPath = "/opt/testssl/testssl.sh"
-        guard FileManager.default.fileExists(atPath: testSSLPath) else {
-            output.append("❌ TestSSL.sh not found. Install with: git clone https://github.com/drwetter/testssl.sh.git /opt/testssl")
+        // Check multiple possible TestSSL.sh locations
+        let possiblePaths = [
+            "/opt/testssl/testssl.sh",
+            "/usr/local/bin/testssl.sh",
+            "/opt/homebrew/bin/testssl.sh",
+            "./testssl.sh",
+            "/usr/share/testssl/testssl.sh"
+        ]
+        
+        var testSSLPath: String?
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                testSSLPath = path
+                break
+            }
+        }
+        
+        guard let finalTestSSLPath = testSSLPath else {
+            let errorMsg = "❌ TestSSL.sh not found in any common location"
+            let installMsg = "💡 Install with: git clone https://github.com/drwetter/testssl.sh.git /opt/testssl"
+            let altInstallMsg = "Or: brew install testssl"
+            
+            output.append(errorMsg)
+            output.append(installMsg)
+            output.append(altInstallMsg)
+            
+            await updateVerboseOutput(errorMsg)
+            await updateVerboseOutput("")
+            await updateVerboseOutput("Checked locations:")
+            for path in possiblePaths {
+                await updateVerboseOutput("  • \(path) - Not found")
+            }
+            await updateVerboseOutput("")
+            await updateVerboseOutput(installMsg)
+            await updateVerboseOutput(altInstallMsg)
+            
             return (output, vulnerabilities)
         }
+        
+        await updateVerboseOutput("✅ TestSSL.sh found at: \(finalTestSSLPath)")
         
         // Extract host from URL
         guard let url = URL(string: targetURL), let host = url.host else {
@@ -2012,7 +2141,7 @@ class AppState {
             return (output, vulnerabilities)
         }
         
-        process.executableURL = URL(fileURLWithPath: testSSLPath)
+        process.executableURL = URL(fileURLWithPath: finalTestSSLPath)
         process.arguments = [
             "--fast",           // Fast scan mode
             "--quiet",          // Reduce output
@@ -2022,6 +2151,13 @@ class AppState {
         
         output.append("🚀 Starting TestSSL.sh comprehensive SSL/TLS analysis...")
         output.append("Target: \(host)")
+        
+        await updateVerboseOutput("🚀 Executing TestSSL.sh with parameters:")
+        await updateVerboseOutput("  • Target: \(host)")
+        await updateVerboseOutput("  • Mode: Fast scan")
+        await updateVerboseOutput("  • Output: Quiet mode")
+        await updateVerboseOutput("  • Timeout: 10 minutes")
+        await updateVerboseOutput("")
         
         do {
             try process.run()
@@ -2038,24 +2174,45 @@ class AppState {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let outputString = String(data: data, encoding: .utf8) {
                 let lines = outputString.components(separatedBy: .newlines)
-                output.append(contentsOf: lines.filter { !$0.isEmpty })
+                let filteredLines = lines.filter { !$0.isEmpty }
+                output.append(contentsOf: filteredLines)
+                
+                // Show real-time output to user
+                await updateVerboseOutput("📋 TestSSL.sh Analysis Results:")
+                for line in filteredLines.prefix(20) { // Show first 20 lines
+                    await updateVerboseOutput(line)
+                }
+                if filteredLines.count > 20 {
+                    await updateVerboseOutput("... (\(filteredLines.count - 20) more lines)")
+                }
+                await updateVerboseOutput("")
                 
                 // Parse TestSSL output for vulnerabilities
+                await updateVerboseOutput("🔍 Analyzing for vulnerabilities...")
                 for line in lines {
                     let lowerLine = line.lowercased()
                     if (lowerLine.contains("vulnerable") || lowerLine.contains("weak") || lowerLine.contains("insecure")) &&
                        !lowerLine.contains("not vulnerable") {
                         vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                        await updateVerboseOutput("⚠️ Found: \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
                     }
+                }
+                
+                if vulnerabilities.isEmpty {
+                    await updateVerboseOutput("✅ No significant vulnerabilities detected")
+                } else {
+                    await updateVerboseOutput("❌ Found \(vulnerabilities.count) potential SSL/TLS issues")
                 }
             }
             
             process.waitUntilExit()
             timeoutTask.cancel()
             output.append("✅ TestSSL.sh analysis completed")
+            await updateVerboseOutput("✅ TestSSL.sh analysis completed successfully")
             
         } catch {
             output.append("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
+            await updateVerboseOutput("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
         }
         
         return (output, vulnerabilities)

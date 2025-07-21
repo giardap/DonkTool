@@ -168,7 +168,7 @@ class BluetoothShell: NSObject, CBCentralManagerDelegate, ObservableObject {
 
 // MARK: - Command Processor
 
-class BluetoothCommandProcessor: ObservableObject {
+class BluetoothCommandProcessor: NSObject, ObservableObject {
     weak var shell: BluetoothShell?
     private let searchSploitManager = SearchSploitManager()
     

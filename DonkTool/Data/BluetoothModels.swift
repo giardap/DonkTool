@@ -156,6 +156,8 @@ struct RealExploitResult: Identifiable {
 
 @Observable
 class LiveBluetoothCVEDatabase {
+    static let shared = LiveBluetoothCVEDatabase()
+    
     var currentCVEs: [LiveCVEEntry] = []
     var lastUpdate: Date?
     var isUpdating = false
@@ -163,9 +165,17 @@ class LiveBluetoothCVEDatabase {
     
     private let nistApiBase = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     private let bluetoothKeywords = ["bluetooth", "BLE", "bt", "blueborne", "knob", "bias"]
+    private var hasLoadedCache = false
     
-    init() {
-        loadCachedCVEs()
+    private init() {
+        // Load cached CVEs safely on main thread
+        if Thread.isMainThread {
+            loadCachedCVEs()
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.loadCachedCVEs()
+            }
+        }
     }
     
     func updateCVEDatabase() async {
@@ -282,11 +292,48 @@ class LiveBluetoothCVEDatabase {
     }
     
     private func loadCachedCVEs() {
-        // Load from cache if available
-        if let data = UserDefaults.standard.data(forKey: "CachedBluetoothCVEs"),
-           let cached = try? JSONDecoder().decode([LiveCVEEntry].self, from: data) {
+        // Prevent multiple loads and infinite loops
+        guard !hasLoadedCache else {
+            print("🔄 CVE cache already loaded, skipping")
+            return
+        }
+        
+        // Ensure we're on main thread for UserDefaults access
+        guard Thread.isMainThread else {
+            print("⚠️ loadCachedCVEs called from background thread, ignoring")
+            return
+        }
+        
+        hasLoadedCache = true
+        
+        // Complete safety wrapper to prevent crashes
+        do {
+            let userDefaults = UserDefaults.standard
+            guard let data = userDefaults.data(forKey: "CachedBluetoothCVEs"), 
+                  !data.isEmpty else {
+                print("📝 No cached CVE data found")
+                currentCVEs = []
+                lastUpdate = nil
+                return
+            }
+            
+            let cached = try JSONDecoder().decode([LiveCVEEntry].self, from: data)
             currentCVEs = cached
-            lastUpdate = UserDefaults.standard.object(forKey: "CVELastUpdate") as? Date
+            lastUpdate = userDefaults.object(forKey: "CVELastUpdate") as? Date
+            print("✅ Loaded \(cached.count) cached CVEs")
+        } catch {
+            // Handle any type of error - UserDefaults, JSON decoding, etc.
+            print("⚠️ CVE cache error: \(error.localizedDescription)")
+            print("🧹 Resetting to empty state...")
+            
+            // Clear cache safely
+            UserDefaults.standard.removeObject(forKey: "CachedBluetoothCVEs")
+            UserDefaults.standard.removeObject(forKey: "CVELastUpdate")
+            UserDefaults.standard.synchronize()
+            
+            // Always reset to safe state
+            currentCVEs = []
+            lastUpdate = nil
         }
     }
     
