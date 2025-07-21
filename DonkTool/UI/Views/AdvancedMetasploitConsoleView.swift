@@ -97,7 +97,7 @@ struct AdvancedMetasploitConsoleView: View {
                 }
                 .background(Color.black.opacity(0.9))
                 .foregroundColor(.green)
-                .onChange(of: msfConsole.consoleOutput) { _ in
+                .onChange(of: msfConsole.consoleOutput) {
                     withAnimation {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
@@ -616,8 +616,7 @@ struct PayloadTemplateCard: View {
             }
         }
         .standardContainer()
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(8)
+        .background(Color(.systemGray).opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

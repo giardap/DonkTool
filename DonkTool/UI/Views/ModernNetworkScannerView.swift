@@ -978,6 +978,9 @@ struct ModernNetworkScannerView: View {
                     appState.networkScanProgress = 1.0
                     currentScanTask = nil
                 }
+                
+                // Trigger integration engine for discovered services
+                await triggerIntegrationForResults(results, target: resolvedTarget)
             }
         }
     }
@@ -995,6 +998,32 @@ struct ModernNetworkScannerView: View {
         appState.currentNetworkTarget = ""
         
         print("🛑 Scan stopped and task cancelled")
+    }
+    
+    // MARK: - Integration Engine Hooks
+    
+    private func triggerIntegrationForResults(_ results: [PortScanResult], target: String) async {
+        for result in results.filter({ $0.isOpen }) {
+            let serviceDiscovery = ServiceDiscovery(
+                targetIP: target,
+                port: result.port,
+                service: result.service ?? "unknown",
+                version: result.version,
+                isOpen: result.isOpen,
+                timestamp: Date(),
+                source: "network_scanner"
+            )
+            
+            // Notify integration engine
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .serviceDiscovered,
+                    object: serviceDiscovery
+                )
+            }
+            
+            print("🔗 Integration: Discovered service \(result.service) on \(target):\(result.port)")
+        }
     }
     
     private func addTarget() {

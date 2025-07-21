@@ -398,6 +398,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "DonkTool requires Bluetooth access to perform authorized security testing and vulnerability assessment of Bluetooth devices. This includes device discovery, service enumeration, and security vulnerability scanning for penetration testing purposes.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "DonkTool requires Bluetooth peripheral access to perform comprehensive security testing and vulnerability assessment of nearby Bluetooth devices for authorized penetration testing.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -424,6 +426,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "DonkTool requires Bluetooth access to perform authorized security testing and vulnerability assessment of Bluetooth devices. This includes device discovery, service enumeration, and security vulnerability scanning for penetration testing purposes.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "DonkTool requires Bluetooth peripheral access to perform comprehensive security testing and vulnerability assessment of nearby Bluetooth devices for authorized penetration testing.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

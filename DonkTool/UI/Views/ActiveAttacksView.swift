@@ -34,7 +34,8 @@ struct ActiveAttacksView: View {
             }
             .navigationTitle("Active Attacks")
             .onReceive(refreshTimer) { _ in
-                // Refresh session data periodically
+                // Refresh session data periodically and clean up old sessions
+                appState.attackFramework.cleanupCompletedSessions()
             }
         }
     }
@@ -51,7 +52,7 @@ struct ActiveAttacksView: View {
                     Text("Active Attacks")
                         .font(.headerPrimary)
                     
-                    Text("\(appState.attackFramework.activeSessions.count) running")
+                    Text("\(appState.attackFramework.runningSessions.count) running, \(appState.attackFramework.completedSessions.count) completed")
                         .font(.captionPrimary)
                         .foregroundColor(.secondary)
                 }
@@ -59,7 +60,8 @@ struct ActiveAttacksView: View {
                 Spacer()
                 
                 Button("Refresh") {
-                    // Force refresh
+                    // Clean up old completed sessions and refresh
+                    appState.attackFramework.cleanupCompletedSessions()
                 }
                 .secondaryButton()
                 .controlSize(.small)
@@ -155,10 +157,17 @@ struct AttackCardHeader: View {
             
             Spacer()
             
-            // Duration
-            Text(formatDuration(Date().timeIntervalSince(session.startTime)))
-                .font(.codeSmall)
-                .foregroundColor(.secondary)
+            // Duration and status indicator
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(formatDuration(session.duration))
+                    .font(.codeSmall)
+                    .foregroundColor(.secondary)
+                
+                Text(session.status.rawValue.capitalized)
+                    .font(.caption2)
+                    .foregroundColor(statusColor)
+                    .fontWeight(.medium)
+            }
             
             // Expand button
             Button(action: { isExpanded.toggle() }) {
@@ -199,42 +208,77 @@ struct AttackCardExpandedContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Divider()
+            attackDetailsSection
+            findingsSection
+            consoleOutputSection
+        }
+    }
+    
+    private var attackDetailsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Attack Details")
+                .font(.headerTertiary)
             
-            // Attack details
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Attack Details")
-                    .font(.headerTertiary)
-                
+            statusRow
+            startTimeRow
+            
+            if session.isCompleted {
+                durationRow
+                endTimeRow
+            }
+        }
+    }
+    
+    private var statusRow: some View {
+        HStack {
+            Text("Status:")
+                .font(.bodySecondary)
+            Text(session.status.rawValue.capitalized)
+                .foregroundColor(statusColor)
+        }
+    }
+    
+    private var startTimeRow: some View {
+        HStack {
+            Text("Started:")
+                .font(.bodySecondary)
+            Text(session.startTime, style: .time)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private var durationRow: some View {
+        HStack {
+            Text("Duration:")
+                .font(.bodySecondary)
+            Text(formatDuration(session.duration))
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private var endTimeRow: some View {
+        Group {
+            if let endTime = session.endTime {
                 HStack {
-                    Text("Status:")
+                    Text("Completed:")
                         .font(.bodySecondary)
-                    Text(session.status.rawValue.capitalized)
-                        .foregroundColor(statusColor)
-                }
-                
-                HStack {
-                    Text("Started:")
-                        .font(.bodySecondary)
-                    Text(session.startTime, style: .time)
+                    Text(endTime, style: .time)
                         .foregroundColor(.secondary)
                 }
-                
-                if session.status == .completed || session.status == .failed {
-                    HStack {
-                        Text("Duration:")
-                            .font(.bodySecondary)
-                        Text(formatDuration(Date().timeIntervalSince(session.startTime)))
-                            .foregroundColor(.secondary)
-                    }
-                }
             }
-            
-            // Findings Summary
-            if session.status == .completed || session.status == .failed {
+        }
+    }
+    
+    private var findingsSection: some View {
+        Group {
+            if session.isCompleted {
                 FindingsSummaryView(session: session)
             }
-            
-            // Console output
+        }
+    }
+    
+    private var consoleOutputSection: some View {
+        Group {
             if !session.outputLines.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Console Output")

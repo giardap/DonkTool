@@ -121,9 +121,9 @@ class MetasploitManager: ObservableObject {
     
     // MARK: - Exploit Execution
     
-    func executeExploit(module: MetasploitModule, target: String, lhost: String, lport: Int) async -> ExploitResult {
+    func executeExploit(module: MetasploitModule, target: String, lhost: String, lport: Int) async -> MetasploitExploitResult {
         guard isConnected else {
-            return ExploitResult(success: false, output: "Not connected to Metasploit", sessionId: nil)
+            return MetasploitExploitResult(success: false, output: "Not connected to Metasploit", sessionId: nil)
         }
         
         isExecuting = true
@@ -163,7 +163,7 @@ class MetasploitManager: ObservableObject {
             activeSession = session
         }
         
-        return ExploitResult(
+        return MetasploitExploitResult(
             success: sessionId != nil,
             output: output,
             sessionId: sessionId
@@ -511,7 +511,7 @@ struct MetasploitSession: Identifiable, Codable {
     }
 }
 
-struct ExploitResult {
+struct MetasploitExploitResult {
     let success: Bool
     let output: String
     let sessionId: String?

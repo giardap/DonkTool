@@ -1,0 +1,639 @@
+import SwiftUI
+import CoreBluetooth
+
+// MARK: - Professional Bluetooth Security Testing Interface
+
+struct ProfessionalBluetoothSecurityView: View {
+    @Environment(AppState.self) private var appState
+    @State private var selectedDevice: MacOSBluetoothDevice?
+    @State private var discoveryMode: DiscoveryMode = .active
+    @State private var showingExploitView = false
+    @State private var showingVulnerabilityDetail = false
+    @State private var selectedVulnerability: MacOSBluetoothVulnerability?
+    @State private var showingMedicalAssessment = false
+    @State private var medicalAssessment: MedicalDeviceAssessment?
+    @State private var showingCVEDatabase = false
+    
+    private var bluetoothFramework: MacOSBluetoothSecurityFramework {
+        appState.bluetoothFramework
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Professional Header
+            ProfessionalHeaderView()
+            
+            HSplitView {
+                // Left Panel - Device Discovery
+                VStack(spacing: 0) {
+                    DeviceDiscoveryPanel()
+                }
+                .frame(minWidth: 400, maxWidth: 550)
+                .background(Color.surfaceBackground)
+                
+                // Right Panel - Security Analysis
+                VStack(spacing: 0) {
+                    if let device = selectedDevice {
+                        SecurityAnalysisPanel(device: device)
+                    } else {
+                        SecurityAnalysisEmptyState()
+                    }
+                }
+                .frame(minWidth: 600)
+            }
+        }
+        .navigationTitle("Professional Bluetooth Security Testing")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                ProfessionalToolbar()
+            }
+        }
+        .sheet(isPresented: $showingVulnerabilityDetail) {
+            if let vulnerability = selectedVulnerability {
+                ProfessionalVulnerabilityDetailView(
+                    vulnerability: vulnerability,
+                    framework: bluetoothFramework
+                )
+            }
+        }
+        .sheet(isPresented: $showingMedicalAssessment) {
+            if let assessment = medicalAssessment {
+                MedicalDeviceComplianceView(assessment: assessment)
+            }
+        }
+        .sheet(isPresented: $showingCVEDatabase) {
+            BluetoothCVEDatabaseView()
+        }
+    }
+    
+    // MARK: - Professional Header
+    
+    @ViewBuilder
+    private func ProfessionalHeaderView() -> some View {
+        VStack(spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                        
+                        Text("Professional Bluetooth Security Assessment")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                    }
+                    
+                    Text("Real-world vulnerability testing with CVE database integration")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // Professional Statistics
+                ProfessionalStatistics()
+            }
+            
+            // Active Scan Progress
+            if appState.isBluetoothScanning {
+                ProfessionalScanProgress()
+            }
+        }
+        .padding()
+        .background(Color.surfaceBackground)
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color(NSColor.separatorColor)),
+            alignment: .bottom
+        )
+    }
+    
+    @ViewBuilder
+    private func ProfessionalStatistics() -> some View {
+        HStack(spacing: 24) {
+            StatisticCard(
+                title: "Devices",
+                value: "\(bluetoothFramework.discoveredDevices.count)",
+                icon: "antenna.radiowaves.left.and.right",
+                color: .blue
+            )
+            
+            StatisticCard(
+                title: "Vulnerabilities",
+                value: "\(appState.bluetoothVulnerabilities.count)",
+                icon: "exclamationmark.shield.fill",
+                color: .red
+            )
+            
+            StatisticCard(
+                title: "Critical",
+                value: "\(criticalVulnerabilityCount)",
+                icon: "exclamationmark.triangle.fill",
+                color: .red
+            )
+            
+            StatisticCard(
+                title: "Exploitable",
+                value: "\(exploitableVulnerabilityCount)",
+                icon: "target",
+                color: .orange
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private func ProfessionalScanProgress() -> some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Security Assessment in Progress")
+                    .font(.headline)
+                    .fontWeight(.medium)
+                
+                Spacer()
+                
+                Text("\(Int(appState.bluetoothScanProgress * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            ProgressView(value: appState.bluetoothScanProgress)
+                .progressViewStyle(LinearProgressViewStyle())
+            
+            HStack {
+                Text(bluetoothFramework.currentOperation)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                if let scan = bluetoothFramework.currentScan {
+                    Text("Started: \(scan.startTime, style: .time)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    // MARK: - Device Discovery Panel
+    
+    @ViewBuilder
+    private func DeviceDiscoveryPanel() -> some View {
+        VStack(spacing: 0) {
+            // Panel Header
+            HStack {
+                Text("Discovered Devices")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                if !bluetoothFramework.discoveredDevices.isEmpty {
+                    Text("\(bluetoothFramework.discoveredDevices.count) found")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .background(Color.cardBackground)
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color(NSColor.separatorColor)),
+                alignment: .bottom
+            )
+            
+            // Device List
+            if bluetoothFramework.discoveredDevices.isEmpty && !appState.isBluetoothScanning {
+                DeviceDiscoveryEmptyState()
+            } else {
+                List(bluetoothFramework.discoveredDevices, selection: $selectedDevice) { device in
+                    ProfessionalDeviceRow(device: device)
+                        .tag(device)
+                }
+                .listStyle(.sidebar)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func DeviceDiscoveryEmptyState() -> some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                .font(.system(size: 64))
+                .foregroundColor(.secondary)
+                .opacity(0.6)
+            
+            VStack(spacing: 8) {
+                Text("No Bluetooth Devices Discovered")
+                    .font(.title3)
+                    .fontWeight(.medium)
+                
+                Text("Start a security assessment to discover nearby Bluetooth devices and test for vulnerabilities")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Button("Start Security Assessment") {
+                startBluetoothDiscovery()
+            }
+            .buttonStyle(.borderedProminent)
+            
+            Spacer()
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Security Analysis Panel
+    
+    @ViewBuilder
+    private func SecurityAnalysisPanel(device: RealBluetoothDevice) -> some View {
+        VStack(spacing: 0) {
+            // Analysis Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(device.name ?? "Unknown Device")
+                        .font(.title3)
+                        .fontWeight(.bold)
+                    
+                    Text(device.macAddress)
+                        .font(.caption)
+                        .monospaced()
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                SecurityRiskBadge(risk: device.securityRisk)
+            }
+            .padding()
+            .background(Color.cardBackground)
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color(NSColor.separatorColor)),
+                alignment: .bottom
+            )
+            
+            // Analysis Tabs
+            TabView {
+                DeviceInformationTab(device: device)
+                    .tabItem {
+                        Label("Device Info", systemImage: "info.circle")
+                    }
+                
+                VulnerabilityAssessmentTab(device: device)
+                    .tabItem {
+                        Label("Vulnerabilities", systemImage: "exclamationmark.shield")
+                    }
+                
+                ExploitTestingTab(device: device)
+                    .tabItem {
+                        Label("Exploit Testing", systemImage: "target")
+                    }
+                
+                if device.deviceClass == .medical {
+                    MedicalComplianceTab(device: device)
+                        .tabItem {
+                            Label("Medical Compliance", systemImage: "cross.case")
+                        }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func SecurityAnalysisEmptyState() -> some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+                .opacity(0.6)
+            
+            VStack(spacing: 8) {
+                Text("Select a Device for Security Analysis")
+                    .font(.title3)
+                    .fontWeight(.medium)
+                
+                Text("Choose a Bluetooth device from the discovery panel to perform comprehensive security testing and vulnerability assessment")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+            }
+            
+            Spacer()
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Professional Toolbar
+    
+    @ViewBuilder
+    private func ProfessionalToolbar() -> some View {
+        HStack(spacing: 12) {
+            // Discovery Mode Picker
+            Picker("Mode", selection: $discoveryMode) {
+                ForEach(DiscoveryMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 250)
+            .disabled(appState.isBluetoothScanning)
+            
+            Divider()
+            
+            // CVE Database Button
+            Button("CVE Database") {
+                showingCVEDatabase = true
+            }
+            .buttonStyle(.bordered)
+            
+            // Scan Controls
+            if appState.isBluetoothScanning {
+                Button("Stop Assessment") {
+                    stopBluetoothDiscovery()
+                }
+                .buttonStyle(.bordered)
+                .foregroundColor(.red)
+            } else {
+                Button("Start Assessment") {
+                    startBluetoothDiscovery()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+    }
+    
+    // MARK: - Supporting Views
+    
+    @ViewBuilder
+    private func StatisticCard(title: String, value: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 16)
+                
+                Text(value)
+                    .font(.title3)
+                    .fontWeight(.bold)
+            }
+            
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    @ViewBuilder
+    private func SecurityRiskBadge(risk: SecurityRisk) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "shield.fill")
+                .font(.caption2)
+            Text(risk.rawValue)
+                .font(.caption2)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(risk.color.opacity(0.2))
+        .foregroundColor(risk.color)
+        .cornerRadius(6)
+    }
+    
+    // MARK: - Tab Content Views
+    
+    @ViewBuilder
+    private func DeviceInformationTab(device: RealBluetoothDevice) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                DeviceInfoCard(device: device)
+                TechnicalSpecsCard(device: device)
+                SecurityFeaturesCard(device: device)
+            }
+            .padding()
+        }
+    }
+    
+    @ViewBuilder
+    private func VulnerabilityAssessmentTab(device: RealBluetoothDevice) -> some View {
+        VStack(spacing: 0) {
+            // Quick Stats
+            VulnerabilityStatsBar(device: device)
+            
+            // Vulnerability List
+            List(device.vulnerabilities) { vulnerability in
+                ProfessionalVulnerabilityRow(vulnerability: vulnerability) {
+                    selectedVulnerability = vulnerability
+                    showingVulnerabilityDetail = true
+                }
+            }
+            .listStyle(.plain)
+        }
+    }
+    
+    @ViewBuilder
+    private func ExploitTestingTab(device: RealBluetoothDevice) -> some View {
+        VStack(spacing: 16) {
+            // Warning Banner
+            ExploitWarningBanner()
+            
+            // Exploitable Vulnerabilities
+            List(device.vulnerabilities.filter { $0.exploitable }) { vulnerability in
+                ExploitTestRow(vulnerability: vulnerability) {
+                    Task {
+                        _ = await appState.executeBluetoothExploit(vulnerability)
+                        // Handle exploit result
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .padding()
+    }
+    
+    @ViewBuilder
+    private func MedicalComplianceTab(device: RealBluetoothDevice) -> some View {
+        VStack(spacing: 16) {
+            Button("Perform FDA/HIPAA Compliance Assessment") {
+                Task {
+                    medicalAssessment = await appState.assessMedicalDeviceCompliance(device)
+                    showingMedicalAssessment = true
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            
+            if let assessment = medicalAssessment {
+                MedicalComplianceSummaryCard(assessment: assessment)
+            }
+        }
+        .padding()
+    }
+    
+    // MARK: - Computed Properties
+    
+    private var criticalVulnerabilityCount: Int {
+        appState.bluetoothVulnerabilities.filter { $0.severity == .critical }.count
+    }
+    
+    private var exploitableVulnerabilityCount: Int {
+        appState.bluetoothVulnerabilities.filter { $0.exploitable }.count
+    }
+    
+    // MARK: - Actions
+    
+    private func startBluetoothDiscovery() {
+        appState.startBluetoothScan(mode: discoveryMode)
+    }
+    
+    private func stopBluetoothDiscovery() {
+        appState.stopBluetoothScan()
+    }
+}
+
+// MARK: - Supporting View Components
+
+struct ProfessionalDeviceRow: View {
+    let device: RealBluetoothDevice
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Device Icon
+            Image(systemName: device.deviceClass.iconName)
+                .font(.title2)
+                .foregroundColor(device.deviceClass.color)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(device.name ?? "Unknown Device")
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                
+                Text(device.macAddress)
+                    .font(.caption)
+                    .monospaced()
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 8) {
+                    DeviceTypeBadge(deviceClass: device.deviceClass)
+                    BluetoothVersionBadge(version: device.bluetoothVersion)
+                    
+                    if device.vulnerabilityCount > 0 {
+                        VulnerabilityCountBadge(
+                            count: device.vulnerabilityCount,
+                            severity: device.highestSeverity
+                        )
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 4) {
+                SignalStrengthIndicator(strength: device.signalStrength, rssi: device.rssi)
+                
+                Text(device.discoveryTime, style: .time)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// Placeholder implementations for supporting views
+struct DeviceInfoCard: View {
+    let device: RealBluetoothDevice
+    var body: some View { Text("Device Info") }
+}
+
+struct TechnicalSpecsCard: View {
+    let device: RealBluetoothDevice
+    var body: some View { Text("Technical Specs") }
+}
+
+struct SecurityFeaturesCard: View {
+    let device: RealBluetoothDevice
+    var body: some View { Text("Security Features") }
+}
+
+struct VulnerabilityStatsBar: View {
+    let device: RealBluetoothDevice
+    var body: some View { Text("Vulnerability Stats") }
+}
+
+struct ProfessionalVulnerabilityRow: View {
+    let vulnerability: RealBluetoothVulnerability
+    let action: () -> Void
+    var body: some View { Text("Vulnerability Row") }
+}
+
+struct ExploitWarningBanner: View {
+    var body: some View { Text("Exploit Warning") }
+}
+
+struct ExploitTestRow: View {
+    let vulnerability: RealBluetoothVulnerability
+    let action: () -> Void
+    var body: some View { Text("Exploit Test Row") }
+}
+
+struct MedicalComplianceSummaryCard: View {
+    let assessment: MedicalDeviceAssessment
+    var body: some View { Text("Medical Compliance Summary") }
+}
+
+struct DeviceTypeBadge: View {
+    let deviceClass: BluetoothDeviceClass
+    var body: some View { Text(deviceClass.rawValue) }
+}
+
+struct BluetoothVersionBadge: View {
+    let version: BluetoothVersion
+    var body: some View { Text(version.rawValue) }
+}
+
+struct VulnerabilityCountBadge: View {
+    let count: Int
+    let severity: Vulnerability.Severity
+    var body: some View { Text("\(count)") }
+}
+
+struct SignalStrengthIndicator: View {
+    let strength: SignalStrength
+    let rssi: Int
+    var body: some View { Text("\(rssi) dBm") }
+}
+
+struct ProfessionalVulnerabilityDetailView: View {
+    let vulnerability: RealBluetoothVulnerability
+    let framework: RealBluetoothSecurityFramework
+    var body: some View { Text("Vulnerability Detail") }
+}
+
+struct MedicalDeviceComplianceView: View {
+    let assessment: MedicalDeviceAssessment
+    var body: some View { Text("Medical Compliance View") }
+}
+
+struct BluetoothCVEDatabaseView: View {
+    var body: some View { Text("CVE Database View") }
+}
+
+#Preview {
+    ProfessionalBluetoothSecurityView()
+        .environment(AppState())
+        .frame(width: 1400, height: 900)
+}

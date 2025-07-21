@@ -10,6 +10,7 @@ import Charts
 
 struct ModernDashboardView: View {
     @Environment(AppState.self) private var appState
+    @State private var lastRefreshTime = Date()
     
     var body: some View {
         ScrollView {
@@ -43,15 +44,54 @@ struct ModernDashboardView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Refresh") {
-                    // Refresh data
+                    Task {
+                        await refreshDashboardData()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(appState.cveDatabase.isLoading)
             }
         }
+        .onAppear {
+            Task {
+                await loadInitialData()
+            }
+        }
+        .refreshable {
+            await refreshDashboardData()
+        }
+    }
+    
+    private func loadInitialData() async {
+        // Only load if we haven't loaded recently or if database is empty
+        if appState.cveDatabase.count == 0 || shouldRefreshData() {
+            await refreshDashboardData()
+        }
+    }
+    
+    private func refreshDashboardData() async {
+        lastRefreshTime = Date()
+        
+        // Update CVE database
+        await appState.cveDatabase.updateDatabase()
+        
+        // You can add other data refresh operations here
+        // For example: refresh target data, scan results, etc.
+    }
+    
+    private func shouldRefreshData() -> Bool {
+        guard let lastUpdate = appState.cveDatabase.lastUpdateTime else {
+            return true // Never updated before
+        }
+        
+        // Refresh if data is older than 1 hour
+        return Date().timeIntervalSince(lastUpdate) > 3600
     }
 }
 
 struct DashboardHeader: View {
+    @Environment(AppState.self) private var appState
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -60,22 +100,54 @@ struct DashboardHeader: View {
                         .font(.title2)
                         .fontWeight(.bold)
                     
-                    Text("Last updated: \(Date().formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if let lastUpdate = appState.cveDatabase.lastUpdateTime {
+                        Text("CVE Database updated: \(lastUpdate.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("CVE Database: Not loaded")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
                 }
                 
                 Spacer()
                 
                 // Status indicator
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(.green)
-                        .frame(width: 8, height: 8)
-                    
-                    Text("System Operational")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if appState.cveDatabase.isLoading {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("Updating CVE Database...")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    } else if appState.cveDatabase.lastError != nil {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("CVE Database Error")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    } else if appState.cveDatabase.count > 0 {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("System Operational")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("CVE Database Empty")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
                 }
             }
         }
@@ -129,10 +201,10 @@ struct MetricsGrid: View {
             
             MetricCard(
                 title: "CVE Database",
-                value: "\(appState.cveDatabase.count)",
-                change: "Updated",
-                trend: .up,
-                color: .green,
+                value: appState.cveDatabase.isLoading ? "Loading..." : "\(appState.cveDatabase.count)",
+                change: cveChangeText,
+                trend: cveDataTrend,
+                color: cveDataColor,
                 icon: "shield.checkerboard"
             )
         }
@@ -144,6 +216,44 @@ struct MetricsGrid: View {
     
     private var criticalVulnerabilities: Int {
         appState.targets.flatMap { $0.vulnerabilities }.filter { $0.severity == .critical }.count
+    }
+    
+    private var cveChangeText: String {
+        if appState.cveDatabase.isLoading {
+            return "Updating..."
+        } else if appState.cveDatabase.lastError != nil {
+            return "Error"
+        } else if let lastUpdate = appState.cveDatabase.lastUpdateTime {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .abbreviated
+            return formatter.localizedString(for: lastUpdate, relativeTo: Date())
+        } else {
+            return "Not loaded"
+        }
+    }
+    
+    private var cveDataTrend: MetricCard.TrendDirection {
+        if appState.cveDatabase.isLoading {
+            return .neutral
+        } else if appState.cveDatabase.lastError != nil {
+            return .down
+        } else if appState.cveDatabase.count > 0 {
+            return .up
+        } else {
+            return .neutral
+        }
+    }
+    
+    private var cveDataColor: Color {
+        if appState.cveDatabase.isLoading {
+            return .blue
+        } else if appState.cveDatabase.lastError != nil {
+            return .red
+        } else if appState.cveDatabase.count > 0 {
+            return .green
+        } else {
+            return .orange
+        }
     }
 }
 
@@ -438,28 +548,94 @@ struct VulnerabilitiesCard: View {
     var recentVulnerabilities: [Vulnerability] {
         appState.getAllVulnerabilities()
             .sorted { $0.discoveredAt > $1.discoveredAt }
-            .prefix(5)
+            .prefix(3)
+            .map { $0 }
+    }
+    
+    var recentCVECorrelations: [CVECorrelation] {
+        appState.integrationEngine.cveCorrelations
+            .sorted { $0.lastUpdated > $1.lastUpdated }
+            .prefix(2)
             .map { $0 }
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Recent Vulnerabilities")
+                Text("Vulnerabilities & CVEs")
                     .font(.headline)
                     .fontWeight(.semibold)
                 
                 Spacer()
                 
-                Button("View All") {
-                    // Navigate to vulnerabilities view
+                NavigationLink("View All") {
+                    CVECorrelationView()
                 }
                 .font(.caption)
                 .buttonStyle(.plain)
                 .foregroundColor(.accentColor)
             }
             
-            if recentVulnerabilities.isEmpty {
+            // CVE Auto-Correlation Summary
+            if !appState.integrationEngine.cveCorrelations.isEmpty {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(appState.integrationEngine.cveCorrelations.count)")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.orange)
+                        Text("CVE Matches")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(appState.integrationEngine.cveCorrelations.filter { $0.exploitAvailable }.count)")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                        Text("With Exploits")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(appState.integrationEngine.cveCorrelations.filter { $0.severity == "CRITICAL" }.count)")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                        Text("Critical")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.bottom, 8)
+                
+                // Recent CVE Correlations
+                VStack(spacing: 8) {
+                    ForEach(recentCVECorrelations, id: \.cveId) { correlation in
+                        CVECorrelationRowCompact(correlation: correlation)
+                    }
+                }
+            }
+            
+            // Traditional Vulnerabilities (if any)
+            if !recentVulnerabilities.isEmpty {
+                if !appState.integrationEngine.cveCorrelations.isEmpty {
+                    Divider()
+                }
+                
+                VStack(spacing: 8) {
+                    ForEach(recentVulnerabilities) { vulnerability in
+                        VulnerabilityRow(vulnerability: vulnerability)
+                    }
+                }
+            }
+            
+            // Empty state
+            if recentVulnerabilities.isEmpty && appState.integrationEngine.cveCorrelations.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "checkmark.shield.fill")
                         .font(.system(size: 24))
@@ -469,14 +645,8 @@ struct VulnerabilitiesCard: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                .frame(height: 120)
+                .frame(height: 80)
                 .frame(maxWidth: .infinity)
-            } else {
-                VStack(spacing: 12) {
-                    ForEach(recentVulnerabilities) { vulnerability in
-                        VulnerabilityRow(vulnerability: vulnerability)
-                    }
-                }
             }
         }
         .padding(20)
@@ -600,6 +770,64 @@ struct ScanProgressCard: View {
         .padding(16)
         .background(Color.cardBackground)
         .cornerRadius(12)
+    }
+}
+
+struct CVECorrelationRowCompact: View {
+    let correlation: CVECorrelation
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Severity indicator
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(getSeverityColor(correlation.severity))
+                .frame(width: 16)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(correlation.cveId)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    
+                    if correlation.exploitAvailable {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red)
+                    }
+                }
+                
+                Text("\(correlation.target):\(correlation.port)")
+                    .font(.caption2)
+                    .foregroundColor(.blue)
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(correlation.severity)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundColor(getSeverityColor(correlation.severity))
+                
+                if correlation.exploitCount > 0 {
+                    Text("\(correlation.exploitCount) exploits")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func getSeverityColor(_ severity: String) -> Color {
+        switch severity {
+        case "CRITICAL": return .red
+        case "HIGH": return .orange
+        case "MEDIUM": return .yellow
+        case "LOW": return .green
+        default: return .blue
+        }
     }
 }
 

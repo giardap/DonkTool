@@ -40,7 +40,7 @@ struct FunctionalOSINTDashboard: View {
         }
         .navigationSplitViewStyle(.prominentDetail)
         .sheet(isPresented: $showingAPIKeySettings) {
-            OSINTAPISettingsView()
+            InlineAPISettingsView()
         }
     }
     
@@ -122,6 +122,7 @@ struct FunctionalOSINTDashboard: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .background(Color.primaryBackground)
         }
         .navigationTitle("Sources")
     }
@@ -319,6 +320,8 @@ struct FunctionalOSINTDashboard: View {
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.primaryBackground)
             .overlay(alignment: .topTrailing) {
                 if !searchResults.isEmpty {
                     Menu {
@@ -845,6 +848,77 @@ extension OSINTConfidence {
         case .low: return 1
         case .medium: return 2
         case .high: return 3
+        }
+    }
+}
+
+// MARK: - Inline API Settings View
+
+struct InlineAPISettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var apiKeys: [String: String] = [:]
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("API Configuration")
+                    .font(.headerPrimary)
+                
+                Text("Configure API keys for enhanced OSINT capabilities")
+                    .font(.bodySecondary)
+                    .foregroundColor(.secondary)
+                
+                VStack(spacing: 16) {
+                    APIKeyField(title: "Hunter.io API Key", key: "hunter", description: "Email finder and verification (25 free searches/month)")
+                    APIKeyField(title: "Have I Been Pwned API Key", key: "haveibeenpwned", description: "Data breach checking service ($3.50/month)")
+                    APIKeyField(title: "Google CSE API Key", key: "google_cse", description: "Custom search engine (100 free searches/day)")
+                }
+                
+                Spacer()
+            }
+            .standardContainer()
+            .navigationTitle("API Settings")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { 
+                        saveAPIKeys()
+                        dismiss() 
+                    }
+                    .primaryButton()
+                }
+            }
+        }
+        .frame(width: 500, height: 400)
+    }
+    
+    private func saveAPIKeys() {
+        // Save API keys to UserDefaults or Keychain
+        for (key, value) in apiKeys {
+            UserDefaults.standard.set(value, forKey: "osint_api_\(key)")
+        }
+    }
+}
+
+struct APIKeyField: View {
+    let title: String
+    let key: String
+    let description: String
+    @State private var value: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headerTertiary)
+            
+            Text(description)
+                .font(.captionPrimary)
+                .foregroundColor(.secondary)
+            
+            SecureField("Enter API key", text: $value)
+                .textFieldStyle(.roundedBorder)
         }
     }
 }

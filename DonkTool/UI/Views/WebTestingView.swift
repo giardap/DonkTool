@@ -16,6 +16,7 @@ struct WebTestingView: View {
         "OWASP ZAP Scan", "HTTP/HTTPS Analysis", "SSL/TLS Analysis",
         "HTTP Header Security", "Basic SSL Check"
     ])
+    @State private var integrationListenerActive = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -85,6 +86,18 @@ struct WebTestingView: View {
                                     .foregroundColor(.blue)
                                     .fontWeight(.medium)
                             }
+                            
+                            if !appState.toolExecutionStatus.isEmpty {
+                                Text(appState.toolExecutionStatus)
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                                    .fontWeight(.medium)
+                            }
+                        }
+                        
+                        // Real-time verbose console output
+                        if appState.isVerboseMode && !appState.currentToolOutput.isEmpty {
+                            VerboseConsoleView(output: appState.currentToolOutput)
                         }
                     }
                 }
@@ -99,6 +112,15 @@ struct WebTestingView: View {
                             Spacer()
                             
                             HStack(spacing: 8) {
+                                // Verbose mode toggle
+                                Toggle("Verbose", isOn: Bindable(appState).isVerboseMode)
+                                    .toggleStyle(.checkbox)
+                                    .font(.caption)
+                                
+                                Text("•")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                
                                 Button("All") {
                                     selectedTools = Set([
                                         "SQL Injection", "Web Vulnerability Scan", "Nuclei Template Scan", 
@@ -285,6 +307,42 @@ struct WebTestingView: View {
                 }
             }
         }
+        .onAppear {
+            setupIntegrationListeners()
+        }
+        .onDisappear {
+            removeIntegrationListeners()
+        }
+    }
+    
+    // MARK: - Integration Engine Hooks
+    
+    private func setupIntegrationListeners() {
+        guard !integrationListenerActive else { return }
+        integrationListenerActive = true
+        
+        // Listen for auto-triggered web testing from network scanner
+        NotificationCenter.default.addObserver(
+            forName: .triggerWebTesting,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let url = notification.object as? String {
+                self.targetURL = url
+                
+                // Auto-start web testing with default tools
+                let defaultTools = ["Web Vulnerability Scan", "Directory Enumeration", "XSS Detection"]
+                self.selectedTools = Set(defaultTools)
+                
+                print("🔗 Integration: Auto-triggered web testing for \(url)")
+                self.startWebScan()
+            }
+        }
+    }
+    
+    private func removeIntegrationListeners() {
+        integrationListenerActive = false
+        NotificationCenter.default.removeObserver(self, name: .triggerWebTesting, object: nil)
     }
     
     private func startWebScan() {
@@ -305,6 +363,7 @@ struct WebTestingView: View {
 struct WebScanResultRowView: View {
     let result: WebScanResult
     @State private var isExpanded = false
+    @State private var selectedTab = 0 // 0: Findings, 1: Full Output
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -322,9 +381,14 @@ struct WebScanResultRowView: View {
                     }
                     
                     Text(result.severity.rawValue)
-                        .statusIndicator(getSeverityStatus(result.severity))
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(getSeverityColor(result.severity).opacity(0.2))
+                        .foregroundColor(getSeverityColor(result.severity))
+                        .cornerRadius(4)
                     
-                    if !result.details.isEmpty {
+                    if !result.details.isEmpty || !result.fullOutput.isEmpty {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isExpanded.toggle()
@@ -356,25 +420,123 @@ struct WebScanResultRowView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Detailed findings (expandable)
-            if isExpanded && !result.details.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Detailed Findings:")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
+            // Expandable detailed content
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Tab selector
+                    HStack(spacing: 16) {
+                        Button(action: { selectedTab = 0 }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "list.bullet")
+                                Text("Findings")
+                                if !result.details.isEmpty {
+                                    Text("(\(result.details.count))")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(selectedTab == 0 ? Color.blue.opacity(0.2) : Color.clear)
+                            .foregroundColor(selectedTab == 0 ? .blue : .secondary)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: { selectedTab = 1 }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "terminal")
+                                Text("Console Output")
+                                if !result.fullOutput.isEmpty {
+                                    Text("(\(result.fullOutput.count) lines)")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(selectedTab == 1 ? Color.blue.opacity(0.2) : Color.clear)
+                            .foregroundColor(selectedTab == 1 ? .blue : .secondary)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                    }
                     
-                    ForEach(Array(result.details.enumerated()), id: \.offset) { index, detail in
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("\(index + 1).")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .frame(width: 20, alignment: .leading)
+                    // Tab content
+                    Group {
+                        switch selectedTab {
+                        case 0:
+                            // Detailed findings
+                            if !result.details.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(Array(result.details.enumerated()), id: \.offset) { index, detail in
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Text("\(index + 1).")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .frame(width: 20, alignment: .leading)
+                                            
+                                            Text(detail)
+                                                .font(.caption)
+                                                .foregroundColor(.primary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .textSelection(.enabled)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("No detailed findings available")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
                             
-                            Text(detail)
-                                .font(.caption)
-                                .foregroundColor(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
+                        case 1:
+                            // Full console output
+                            if !result.fullOutput.isEmpty {
+                                ScrollView {
+                                    LazyVStack(alignment: .leading, spacing: 2) {
+                                        ForEach(Array(result.fullOutput.enumerated()), id: \.offset) { index, line in
+                                            HStack(alignment: .top, spacing: 8) {
+                                                Text("\(index + 1)")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                                    .frame(width: 30, alignment: .trailing)
+                                                    .fontDesign(.monospaced)
+                                                
+                                                Text(line)
+                                                    .font(.caption)
+                                                    .fontDesign(.monospaced)
+                                                    .foregroundColor(.primary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                    .textSelection(.enabled)
+                                                
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 1)
+                                            .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
+                                        }
+                                    }
+                                }
+                                .frame(maxHeight: 300)
+                                .background(Color.black.opacity(0.02))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                )
+                            } else {
+                                Text("No console output available")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
+                            
+                        default:
+                            EmptyView()
                         }
                     }
                 }
@@ -393,10 +555,21 @@ struct WebScanResultRowView: View {
     
     private func getSeverityStatus(_ severity: WebScanResult.Severity) -> StatusIndicator.StatusType {
         switch severity {
+        case .critical: return .danger
         case .high: return .danger
         case .medium: return .warning
         case .low: return .success
         case .informational: return .info
+        }
+    }
+    
+    private func getSeverityColor(_ severity: WebScanResult.Severity) -> Color {
+        switch severity {
+        case .critical: return .red
+        case .high: return .red
+        case .medium: return .orange
+        case .low: return .green
+        case .informational: return .blue
         }
     }
 }
@@ -454,6 +627,131 @@ struct ClickableSecurityToolCard: View {
         .buttonStyle(.plain)
         .scaleEffect(isSelected ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
+struct VerboseConsoleView: View {
+    let output: [String]
+    @State private var isExpanded = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            consoleHeader
+            
+            if isExpanded {
+                consoleContent
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+        )
+    }
+    
+    private var consoleHeader: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isExpanded.toggle()
+            }
+        }) {
+            HStack {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text("Live Tool Output")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text("\(output.count) lines")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(4)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var consoleContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(output.enumerated()), id: \.offset) { index, line in
+                        ConsoleLineView(index: index, line: line)
+                    }
+                }
+            }
+            .frame(maxHeight: 200)
+            .background(Color.black.opacity(0.05))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+            .onChange(of: output.count) { _, newCount in
+                withAnimation(.easeOut(duration: 0.3)) {
+                    proxy.scrollTo(newCount - 1, anchor: .bottom)
+                }
+            }
+        }
+    }
+}
+
+struct ConsoleLineView: View {
+    let index: Int
+    let line: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(index + 1)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .frame(width: 30, alignment: .trailing)
+                .fontDesign(.monospaced)
+            
+            Text(line)
+                .font(.caption)
+                .fontDesign(.monospaced)
+                .foregroundColor(getLineColor(line))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 1)
+        .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
+        .id(index)
+    }
+    
+    private func getLineColor(_ line: String) -> Color {
+        let lowerLine = line.lowercased()
+        
+        if lowerLine.contains("❌") || lowerLine.contains("error") || lowerLine.contains("failed") {
+            return .red
+        } else if lowerLine.contains("⚠️") || lowerLine.contains("warning") || lowerLine.contains("timeout") {
+            return .orange
+        } else if lowerLine.contains("✅") || lowerLine.contains("completed") || lowerLine.contains("success") {
+            return .green
+        } else if lowerLine.contains("🚨") || lowerLine.contains("vulnerability") || lowerLine.contains("found") {
+            return .red
+        } else if lowerLine.contains("🔧") || lowerLine.contains("🚀") || lowerLine.contains("command") {
+            return .blue
+        } else if lowerLine.contains("📍") || lowerLine.contains("target") {
+            return .purple
+        } else {
+            return .primary
+        }
     }
 }
 

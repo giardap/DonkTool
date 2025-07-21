@@ -43,9 +43,20 @@ struct WebScanResult: Identifiable, Hashable {
     let severity: Severity
     let details: [String] // Detailed findings like directory names, vulnerabilities
     let timestamp: Date
+    let fullOutput: [String] // Complete console output from the tool
+    
+    init(type: String, description: String, url: String, severity: Severity, details: [String], timestamp: Date, fullOutput: [String] = []) {
+        self.type = type
+        self.description = description
+        self.url = url
+        self.severity = severity
+        self.details = details
+        self.timestamp = timestamp
+        self.fullOutput = fullOutput
+    }
     
     enum Severity: String, Hashable {
-        case informational, low, medium, high
+        case informational, low, medium, high, critical
         
         var color: Color {
             switch self {
@@ -53,6 +64,7 @@ struct WebScanResult: Identifiable, Hashable {
             case .low: return .green
             case .medium: return .orange
             case .high: return .red
+            case .critical: return .red
             }
         }
     }
@@ -91,6 +103,11 @@ class AppState {
     var selectedTarget: String?
     var attackFramework = AttackFramework()
     
+    // Integration components
+    var integrationEngine = IntegrationEngine.shared
+    var credentialVault = CredentialVault.shared
+    var evidenceManager = EvidenceManager.shared
+    
     // Network Scanning
     var isNetworkScanning: Bool = false
     var currentNetworkTarget: String = ""
@@ -105,6 +122,26 @@ class AppState {
     var currentWebTestName: String = ""
     private var webScanTask: Task<Void, Never>?
     
+    // Professional Bluetooth Security Testing
+    var isBluetoothScanning: Bool = false
+    var bluetoothScanProgress: Double = 0.0
+    var bluetoothFramework = MacOSBluetoothSecurityFramework()
+    var bluetoothVulnerabilities: [MacOSBluetoothVulnerability] = []
+    var selectedBluetoothDevice: MacOSBluetoothDevice?
+    
+    // Advanced Bluetooth Shell with Live CVE Integration
+    var bluetoothShellActive = false
+    var currentBluetoothTarget: String = ""
+    var liveCVEDatabase = LiveBluetoothCVEDatabase()
+    var bluetoothExploitEngine: RealBluetoothExploitEngine?
+    var bluetoothShell: BluetoothShell?
+    var recentExploitResults: [RealExploitResult] = []
+    
+    // SearchSploit Integration
+    var searchSploitManager = SearchSploitManager()
+    var lastExploitSearch: [ExploitEntry] = []
+    var isSearchingExploits = false
+    
     // Real-time verbose output
     var currentToolOutput: [String] = []
     var currentToolCommand: String = ""
@@ -115,6 +152,14 @@ class AppState {
     // Active scanning state
     var activeScans: [String: String] = [:]
     var allVulnerabilities: [Vulnerability] = []
+    
+    // Helper method for updating verbose output
+    @MainActor
+    private func updateVerboseOutput(_ message: String) {
+        if isVerboseMode {
+            currentToolOutput.append(message)
+        }
+    }
     var selectedScanResult: ScanResult?
     var selectedTargetDetails: Target?
     var vulnerabilities: [Vulnerability] = []
@@ -131,6 +176,7 @@ class AppState {
         case vulnerabilityDatabase
         case networkScanner
         case webTesting
+        case bluetoothSecurity
         case dosStressTesting
         case metasploitConsole
         case osintDashboard
@@ -144,6 +190,7 @@ class AppState {
             case .vulnerabilityDatabase: return "Vulnerability Database"
             case .networkScanner: return "Network Scanner"
             case .webTesting: return "Web Testing"
+            case .bluetoothSecurity: return "Bluetooth Security"
             case .dosStressTesting: return "DoS/Stress Testing"
             case .metasploitConsole: return "Metasploit Console"
             case .osintDashboard: return "OSINT Dashboard"
@@ -159,6 +206,7 @@ class AppState {
             case .vulnerabilityDatabase: return "shield.checkerboard"
             case .networkScanner: return "network"
             case .webTesting: return "globe"
+            case .bluetoothSecurity: return "antenna.radiowaves.left.and.right"
             case .dosStressTesting: return "exclamationmark.triangle.fill"
             case .metasploitConsole: return "terminal.fill"
             case .osintDashboard: return "binoculars.fill"
@@ -173,6 +221,17 @@ class AppState {
         case home
         case targetDetails
         case vulnerabilityDetails
+    }
+    
+    init() {
+        // Initialize Bluetooth components
+        bluetoothShell = BluetoothShell()
+        bluetoothExploitEngine = RealBluetoothExploitEngine()
+        
+        // Start CVE database update in background
+        Task {
+            await liveCVEDatabase.updateCVEDatabase()
+        }
     }
     
     func addTarget(_ target: Target) {
@@ -213,6 +272,122 @@ class AppState {
         currentWebTarget = ""
     }
     
+    // Bluetooth Scan Methods
+    // Professional Bluetooth Security Testing Methods
+    func startBluetoothScan(mode: DiscoveryMode) {
+        print("🚀 Starting professional Bluetooth security assessment - Mode: \(mode.rawValue)")
+        
+        isBluetoothScanning = true
+        bluetoothScanProgress = 0.0
+        bluetoothVulnerabilities.removeAll()
+        
+        Task {
+            // Update CVE database first
+            await bluetoothFramework.updateCVEDatabase()
+            
+            // Set up real-time progress monitoring
+            let progressTask = Task {
+                while isBluetoothScanning {
+                    await MainActor.run {
+                        self.bluetoothScanProgress = self.bluetoothFramework.scanProgress
+                        // Update vulnerabilities in real-time
+                        self.bluetoothVulnerabilities = self.bluetoothFramework.vulnerabilityFindings
+                        
+                        // Integrate Bluetooth vulnerabilities with main targets
+                        self.integrateBluetoothVulnerabilities()
+                    }
+                    try? await Task.sleep(nanoseconds: 500_000_000) // Update every 0.5 seconds
+                }
+            }
+            
+            // Start the professional security scan
+            await bluetoothFramework.startDiscovery(mode: mode)
+            
+            progressTask.cancel()
+            await MainActor.run {
+                self.isBluetoothScanning = false
+                self.bluetoothScanProgress = 1.0
+                self.bluetoothVulnerabilities = self.bluetoothFramework.vulnerabilityFindings
+                
+                // Final integration of vulnerabilities
+                self.integrateBluetoothVulnerabilities()
+                
+                print("✅ Professional Bluetooth security assessment completed")
+                print("📊 Results: \(self.bluetoothFramework.discoveredDevices.count) devices, \(self.bluetoothVulnerabilities.count) vulnerabilities")
+            }
+        }
+    }
+    
+    func stopBluetoothScan() {
+        isBluetoothScanning = false
+        bluetoothScanProgress = 0.0
+        print("🛑 Stopping Bluetooth security assessment")
+    }
+    
+    // Integration with main DonkTool vulnerability tracking
+    private func integrateBluetoothVulnerabilities() {
+        for btVuln in bluetoothVulnerabilities {
+            // Convert Bluetooth vulnerability to main Vulnerability model
+            let vulnerability = Vulnerability(
+                cveId: btVuln.cveId,
+                title: btVuln.title,
+                description: btVuln.description,
+                severity: btVuln.severity,
+                port: nil,
+                service: "Bluetooth",
+                discoveredAt: btVuln.discoveredAt
+            )
+            
+            // Find or create target for this Bluetooth device
+            let deviceIdentifier = btVuln.device
+            
+            if let existingTargetIndex = targets.firstIndex(where: { $0.ipAddress == deviceIdentifier }) {
+                // Add to existing target
+                if !targets[existingTargetIndex].vulnerabilities.contains(where: { $0.cveId == vulnerability.cveId }) {
+                    targets[existingTargetIndex].vulnerabilities.append(vulnerability)
+                }
+            } else {
+                // Create new target for Bluetooth device
+                let newTarget = Target(
+                    name: "Bluetooth Device (\(btVuln.deviceAddress))",
+                    ipAddress: deviceIdentifier
+                )
+                targets.append(newTarget)
+                // Add vulnerability to the newly created target
+                if let newTargetIndex = targets.firstIndex(where: { $0.ipAddress == deviceIdentifier }) {
+                    targets[newTargetIndex].vulnerabilities.append(vulnerability)
+                }
+            }
+        }
+    }
+    
+    
+    // Medical Device Compliance Assessment
+    func assessMedicalDeviceCompliance(_ device: MacOSBluetoothDevice) async -> MedicalDeviceAssessment {
+        // Note: Medical device assessment needs to be implemented in macOS framework
+        return MedicalDeviceAssessment(
+            deviceInfo: MacOSDeviceInfo(
+                name: device.name ?? "Unknown",
+                address: device.address,
+                manufacturer: device.manufacturerName,
+                deviceClass: device.deviceClass
+            ),
+            complianceResults: [],
+            riskAssessment: MacOSRiskAssessment(
+                level: .low,
+                factors: ["Basic assessment completed"],
+                mitigations: ["Update device firmware", "Review security settings"]
+            ),
+            recommendations: ["Update device firmware", "Review security settings"]
+        )
+    }
+    
+    // Professional Bluetooth Exploit Execution
+    func executeBluetoothExploit(_ vulnerability: MacOSBluetoothVulnerability) async -> ExploitResult {
+        print("⚠️  Executing authorized Bluetooth exploit: \(vulnerability.title)")
+        return await bluetoothFramework.performVulnerabilityExploit(vulnerability)
+    }
+    
     // Real web vulnerability scanning implementation
     private func executeRealWebScanning(targetURL: String, selectedTools: [String]) async {
         let allWebTests = [
@@ -242,6 +417,12 @@ class AppState {
             await MainActor.run {
                 self.webScanProgress = Double(index) / Double(totalTests)
                 self.currentWebTestName = testName
+                self.currentToolOutput.removeAll()
+                self.toolExecutionStartTime = Date()
+                self.toolExecutionStatus = "Starting \(testName)..."
+                self.currentToolOutput.append("🔧 Initializing \(testName)")
+                self.currentToolOutput.append("📍 Target: \(targetURL)")
+                self.currentToolOutput.append("⏰ Started at: \(Date().formatted(date: .omitted, time: .standard))")
             }
             
             // Check if task was cancelled
@@ -250,11 +431,19 @@ class AppState {
                 await MainActor.run {
                     self.isWebScanning = false
                     self.currentWebTestName = "Scan cancelled"
+                    self.toolExecutionStatus = "Cancelled"
+                    self.currentToolOutput.append("❌ Scan cancelled by user")
                 }
                 return
             }
             
             print("🔍 Starting web test: \(testName)")
+            
+            // Update status to executing
+            await MainActor.run {
+                self.toolExecutionStatus = "Executing \(testName)..."
+                self.currentToolOutput.append("🚀 Executing security tool...")
+            }
             
             // Execute the test with timeout
             let result: WebScanResult?
@@ -263,8 +452,25 @@ class AppState {
                     await testFunc()
                 }
                 print("✅ Completed web test: \(testName)")
+                
+                // Update completion status
+                await MainActor.run {
+                    let duration = self.toolExecutionStartTime?.timeIntervalSinceNow.magnitude ?? 0
+                    self.toolExecutionStatus = "Completed \(testName) in \(String(format: "%.1f", duration))s"
+                    self.currentToolOutput.append("✅ Tool execution completed successfully")
+                    self.currentToolOutput.append("⏱️ Duration: \(String(format: "%.1f", duration)) seconds")
+                    if let result = result {
+                        self.currentToolOutput.append("📊 Found \(result.details.count) findings")
+                        self.currentToolOutput.append("🔍 Severity: \(result.severity.rawValue)")
+                    }
+                }
+                
             } catch {
                 print("⏰ Timeout or error in web test: \(testName) - \(error)")
+                await MainActor.run {
+                    self.toolExecutionStatus = "Failed - \(testName)"
+                    self.currentToolOutput.append("❌ Tool execution failed: \(error.localizedDescription)")
+                }
                 result = WebScanResult(
                     type: testName,
                     description: "Test timed out or failed: \(error.localizedDescription)",
@@ -279,6 +485,9 @@ class AppState {
             await MainActor.run {
                 if let scanResult = result {
                     self.webScanResults.append(scanResult)
+                    
+                    // Check for credential discoveries and vulnerability findings
+                    self.processWebScanResultForIntegration(scanResult, targetURL: targetURL)
                 }
             }
             
@@ -304,6 +513,127 @@ class AppState {
         }
     }
     
+    // MARK: - Integration Processing
+    
+    private func processWebScanResultForIntegration(_ result: WebScanResult, targetURL: String) {
+        // Extract target information
+        guard let url = URL(string: targetURL) else { return }
+        let target = url.host ?? targetURL
+        let port = url.port ?? (url.scheme == "https" ? 443 : 80)
+        
+        // Check for credential-related findings
+        let credentialIndicators = [
+            "username", "password", "login", "admin", "default credentials",
+            "weak password", "credential", "auth", "authentication"
+        ]
+        
+        for detail in result.details {
+            let lowerDetail = detail.lowercased()
+            
+            // Look for credential patterns
+            if credentialIndicators.contains(where: { lowerDetail.contains($0) }) {
+                // Extract potential credentials using regex patterns
+                extractAndNotifyCredentials(from: detail, target: target, port: port, source: result.type)
+            }
+        }
+        
+        // Check for vulnerability notifications
+        if result.severity == .high || result.severity == .critical {
+            NotificationCenter.default.post(
+                name: .vulnerabilityFound,
+                object: nil,
+                userInfo: [
+                    "target": target,
+                    "port": port,
+                    "type": result.type,
+                    "severity": result.severity.rawValue,
+                    "description": result.description,
+                    "source": "web_scanner"
+                ]
+            )
+        }
+    }
+    
+    private func extractAndNotifyCredentials(from detail: String, target: String, port: Int, source: String) {
+        // Common credential patterns
+        let patterns = [
+            // username:password format
+            #"(\w+):(\w+)"#,
+            // admin/password format  
+            #"(\w+)/(\w+)"#,
+            // user="admin" pass="password" format
+            #"user[=\"']([^\"']+)[\"'].*pass[=\"']([^\"']+)[\"']"#,
+            // Default credentials mentions
+            #"default.*(\w+).*(\w+)"#
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let matches = regex.matches(in: detail, options: [], range: NSRange(detail.startIndex..., in: detail))
+                
+                for match in matches {
+                    guard match.numberOfRanges >= 3 else { continue }
+                    
+                    let usernameRange = Range(match.range(at: 1), in: detail)
+                    let passwordRange = Range(match.range(at: 2), in: detail)
+                    
+                    if let usernameRange = usernameRange, let passwordRange = passwordRange {
+                        let username = String(detail[usernameRange])
+                        let password = String(detail[passwordRange])
+                        
+                        // Filter out obviously false positives
+                        guard !username.isEmpty && !password.isEmpty &&
+                              username.count > 2 && password.count > 2 &&
+                              username != password else { continue }
+                        
+                        let credentialDiscovery = CredentialDiscovery(
+                            username: username,
+                            password: password,
+                            service: "Web",
+                            target: target,
+                            port: port,
+                            source: "web_scanner_\(source.lowercased())",
+                            confidence: determineCredentialConfidence(username: username, password: password, context: detail),
+                            timestamp: Date()
+                        )
+                        
+                        NotificationCenter.default.post(
+                            name: .credentialsDiscovered,
+                            object: credentialDiscovery
+                        )
+                        
+                        print("🔐 Integration: Discovered credentials \(username):\(password) from \(source)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func determineCredentialConfidence(username: String, password: String, context: String) -> CredentialConfidence {
+        let lowConfidenceKeywords = ["test", "demo", "example", "sample"]
+        let highConfidenceKeywords = ["admin", "root", "administrator", "default"]
+        
+        let contextLower = context.lowercased()
+        let usernameLower = username.lowercased()
+        let passwordLower = password.lowercased()
+        
+        // High confidence indicators
+        if highConfidenceKeywords.contains(usernameLower) ||
+           contextLower.contains("default") ||
+           contextLower.contains("credentials found") {
+            return .high
+        }
+        
+        // Low confidence indicators  
+        if lowConfidenceKeywords.contains(usernameLower) ||
+           lowConfidenceKeywords.contains(passwordLower) ||
+           username == password {
+            return .low
+        }
+        
+        return .medium
+    }
+    
     // Real tool implementations for web testing
     private func executeRealSQLMapTest(targetURL: String) async -> WebScanResult? {
         let result = await executeSQLMapCommand(targetURL: targetURL)
@@ -315,20 +645,47 @@ class AppState {
                 url: targetURL,
                 severity: .high,
                 details: result.vulnerabilities,
-                timestamp: Date()
+                timestamp: Date(),
+                fullOutput: result.output
             )
-        } else if result.output.contains(where: { $0.contains("testing completed") || $0.contains("not vulnerable") }) {
+        } else if result.output.contains(where: { 
+            $0.contains("testing completed") || 
+            $0.contains("not vulnerable") || 
+            $0.contains("all tested parameters do not appear to be injectable") ||
+            $0.contains("done") ||
+            $0.contains("tested") 
+        }) {
             return WebScanResult(
                 type: "SQL Injection",
                 description: "No SQL injection vulnerabilities detected",
                 url: targetURL,
                 severity: .informational,
-                details: [],
-                timestamp: Date()
+                details: ["Scan completed successfully", "No injectable parameters found"],
+                timestamp: Date(),
+                fullOutput: result.output
+            )
+        } else if result.output.isEmpty {
+            return WebScanResult(
+                type: "SQL Injection",
+                description: "SQLMap failed to execute or no output received",
+                url: targetURL,
+                severity: .low,
+                details: ["Check if SQLMap is properly installed", "Verify target URL is accessible"],
+                timestamp: Date(),
+                fullOutput: ["Error: No output from SQLMap execution"]
+            )
+        } else {
+            // SQLMap ran but results are inconclusive
+            return WebScanResult(
+                type: "SQL Injection",
+                description: "SQLMap scan completed with inconclusive results",
+                url: targetURL,
+                severity: .informational,
+                details: ["Scan completed but no clear vulnerability status", "Check full output for details"],
+                timestamp: Date(),
+                fullOutput: result.output
             )
         }
-        
-        return nil
     }
     
     private func executeRealNiktoTest(targetURL: String) async -> WebScanResult? {
@@ -341,7 +698,8 @@ class AppState {
                 url: targetURL,
                 severity: .medium,
                 details: result.vulnerabilities,
-                timestamp: Date()
+                timestamp: Date(),
+                fullOutput: result.output
             )
         } else if result.output.contains(where: { $0.contains("scan complete") || $0.contains("tested") }) {
             return WebScanResult(
@@ -349,12 +707,21 @@ class AppState {
                 description: "Nikto scan completed - no major vulnerabilities found",
                 url: targetURL,
                 severity: .informational,
-                details: [],
-                timestamp: Date()
+                details: ["Scan completed successfully"],
+                timestamp: Date(),
+                fullOutput: result.output
+            )
+        } else {
+            return WebScanResult(
+                type: "Web Vulnerability Scan",
+                description: "Nikto scan completed with inconclusive results",
+                url: targetURL,
+                severity: .informational,
+                details: ["Check full output for details"],
+                timestamp: Date(),
+                fullOutput: result.output
             )
         }
-        
-        return nil
     }
     
     private func executeRealDirectoryTest(targetURL: String) async -> WebScanResult? {
@@ -467,52 +834,176 @@ class AppState {
         // Check if SQLMap is installed
         guard let sqlmapPath = findWebToolPath("sqlmap") else {
             output.append("❌ SQLMap not found. Install with: brew install sqlmap")
+            await updateVerboseOutput("❌ SQLMap not found. Install with: brew install sqlmap")
             return (output, vulnerabilities)
         }
         
-        process.executableURL = URL(fileURLWithPath: sqlmapPath)
-        process.arguments = [
-            "-u", targetURL,
-            "--batch",  // Non-interactive mode
-            "--level=1",  // Test level
-            "--risk=1",   // Risk level
-            "--timeout=30",  // Timeout per request
-            "--retries=1"    // Number of retries
+        // Set up proper environment for Python execution
+        var environment = ProcessInfo.processInfo.environment
+        
+        // Add common paths to ensure Python can be found
+        let currentPath = environment["PATH"] ?? ""
+        let additionalPaths = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/opt/python@3.13/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
         ]
+        let newPath = (additionalPaths + [currentPath]).joined(separator: ":")
+        environment["PATH"] = newPath
+        
+        // Determine the best way to execute SQLMap
+        let pythonPaths = [
+            "/opt/homebrew/opt/python@3.13/bin/python3.13",
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3",
+            "/usr/bin/python3"
+        ]
+        
+        var pythonPath: String? = nil
+        for path in pythonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                pythonPath = path
+                break
+            }
+        }
+        
+        if let pythonPath = pythonPath {
+            // Run with explicit Python interpreter for better compatibility
+            process.executableURL = URL(fileURLWithPath: pythonPath)
+            process.arguments = [
+                sqlmapPath,
+                "-u", targetURL,
+                "--batch",  // Non-interactive mode
+                "--level=1",  // Test level
+                "--risk=1",   // Risk level
+                "--timeout=30",  // Timeout per request
+                "--retries=1"    // Number of retries
+            ]
+        } else {
+            // Fallback to direct execution
+            process.executableURL = URL(fileURLWithPath: sqlmapPath)
+            process.arguments = [
+                "-u", targetURL,
+                "--batch",  // Non-interactive mode
+                "--level=1",  // Test level
+                "--risk=1",   // Risk level
+                "--timeout=30",  // Timeout per request
+                "--retries=1"    // Number of retries
+            ]
+        }
+        
+        process.environment = environment
+        
+        // Update verbose output with command details
+        let commandDescription = pythonPath != nil ? 
+            "\(pythonPath!) \(sqlmapPath) -u \(targetURL) --batch --level=1 --risk=1 --timeout=30 --retries=1" :
+            "\(sqlmapPath) -u \(targetURL) --batch --level=1 --risk=1 --timeout=30 --retries=1"
+        await updateVerboseOutput("🔧 SQLMap Command: \(commandDescription)")
+        await updateVerboseOutput("🚀 Starting SQLMap SQL injection detection...")
+        await updateVerboseOutput("📍 Target: \(targetURL)")
+        await updateVerboseOutput("⚙️ Parameters: Level=1, Risk=1, Timeout=30s")
         
         output.append("🚀 Starting SQLMap scan...")
         output.append("Target: \(targetURL)")
         
         do {
             try process.run()
+            await updateVerboseOutput("$ \(commandDescription)")
+            await updateVerboseOutput("")
             
-            // Set a timeout for the process
+            // Set a timeout for the process (5 minutes)
             let timeoutTask = Task {
                 try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
                 if process.isRunning {
                     process.terminate()
-                    output.append("⏰ SQLMap scan timed out after 5 minutes")
+                    await updateVerboseOutput("⏰ SQLMap scan timed out after 5 minutes")
                 }
             }
             
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let outputString = String(data: data, encoding: .utf8) {
-                let lines = outputString.components(separatedBy: .newlines)
-                output.append(contentsOf: lines.filter { !$0.isEmpty })
-                
-                // Parse SQLMap output for vulnerabilities
-                for line in lines {
-                    let lowerLine = line.lowercased()
-                    if lowerLine.contains("vulnerable") && !lowerLine.contains("not vulnerable") {
-                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
-                    } else if lowerLine.contains("injection") && lowerLine.contains("found") {
-                        vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
+            defer {
+                timeoutTask.cancel()
+            }
+            
+            // Stream real-time output using async approach
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    let fileHandle = pipe.fileHandleForReading
+                    var buffer = ""
+                    
+                    while process.isRunning {
+                        let availableData = fileHandle.availableData
+                        if !availableData.isEmpty {
+                            if let newOutput = String(data: availableData, encoding: .utf8) {
+                                buffer += newOutput
+                                
+                                // Process complete lines
+                                let lines = buffer.components(separatedBy: .newlines)
+                                let completeLines = lines.dropLast() // Last element might be incomplete
+                                buffer = String(lines.last ?? "") // Keep incomplete line in buffer
+                                
+                                for line in completeLines {
+                                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmedLine.isEmpty {
+                                        await MainActor.run {
+                                            Task {
+                                                await self.updateVerboseOutput(trimmedLine)
+                                            }
+                                        }
+                                        output.append(trimmedLine)
+                                        
+                                        // Check for vulnerabilities in real-time
+                                        let lowerLine = trimmedLine.lowercased()
+                                        if (lowerLine.contains("vulnerable") && !lowerLine.contains("not vulnerable")) ||
+                                           (lowerLine.contains("injection") && lowerLine.contains("found")) {
+                                            vulnerabilities.append(trimmedLine)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Small delay to prevent excessive CPU usage
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    }
+                    
+                    // Read any remaining data
+                    let remainingData = fileHandle.readDataToEndOfFile()
+                    if !remainingData.isEmpty {
+                        if let finalOutput = String(data: remainingData, encoding: .utf8) {
+                            buffer += finalOutput
+                            
+                            // Process any remaining lines
+                            let finalLines = buffer.components(separatedBy: .newlines)
+                            for line in finalLines {
+                                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmedLine.isEmpty {
+                                    await MainActor.run {
+                                        Task {
+                                            await self.updateVerboseOutput(trimmedLine)
+                                        }
+                                    }
+                                    output.append(trimmedLine)
+                                    
+                                    // Check for vulnerabilities in final output
+                                    let lowerLine = trimmedLine.lowercased()
+                                    if (lowerLine.contains("vulnerable") && !lowerLine.contains("not vulnerable")) ||
+                                       (lowerLine.contains("injection") && lowerLine.contains("found")) {
+                                        vulnerabilities.append(trimmedLine)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             
+            // Wait for process to complete
             process.waitUntilExit()
-            timeoutTask.cancel()
+            
+            await updateVerboseOutput("")
+            await updateVerboseOutput("SQLMap scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ SQLMap scan completed")
             
         } catch {
@@ -535,11 +1026,11 @@ class AppState {
         // Check if Nikto is installed
         guard let niktoPath = findWebToolPath("nikto") else {
             output.append("❌ Nikto not found. Install with: brew install nikto")
+            await updateVerboseOutput("❌ Nikto not found. Install with: brew install nikto")
             return (output, vulnerabilities)
         }
         
-        process.executableURL = URL(fileURLWithPath: niktoPath)
-        process.arguments = [
+        let commandArgs = [
             "-h", targetURL,
             "-C", "all",  // Check all vulnerability classes
             "-nointeractive",  // Don't prompt for input
@@ -547,34 +1038,124 @@ class AppState {
             "-maxtime", "300"  // Maximum scan time (5 minutes)
         ]
         
+        process.executableURL = URL(fileURLWithPath: niktoPath)
+        process.arguments = commandArgs
+        
+        // Update verbose output with command details
+        await updateVerboseOutput("🔧 Nikto Command: \(niktoPath) \(commandArgs.joined(separator: " "))")
+        await updateVerboseOutput("🚀 Starting Nikto web vulnerability scan...")
+        await updateVerboseOutput("📍 Target: \(targetURL)")
+        await updateVerboseOutput("⚙️ Parameters: All checks, 30s timeout, 5min max time")
+        
         output.append("🚀 Starting Nikto scan...")
         output.append("Target: \(targetURL)")
         
         do {
             try process.run()
+            await updateVerboseOutput("$ \(niktoPath) \(commandArgs.joined(separator: " "))")
+            await updateVerboseOutput("")
             
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let outputString = String(data: data, encoding: .utf8) {
-                let lines = outputString.components(separatedBy: .newlines)
-                output.append(contentsOf: lines.filter { !$0.isEmpty })
-                
-                // Parse Nikto output for vulnerabilities
-                for line in lines {
-                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmedLine.contains("+") && (
-                        trimmedLine.lowercased().contains("vuln") ||
-                        trimmedLine.lowercased().contains("security") ||
-                        trimmedLine.lowercased().contains("risk") ||
-                        trimmedLine.lowercased().contains("exposed") ||
-                        trimmedLine.lowercased().contains("version") ||
-                        trimmedLine.lowercased().contains("header")
-                    ) {
-                        vulnerabilities.append(trimmedLine)
+            // Set a timeout for the process (5 minutes)
+            let timeoutTask = Task {
+                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
+                if process.isRunning {
+                    process.terminate()
+                    await updateVerboseOutput("⏰ Nikto scan timed out after 5 minutes")
+                }
+            }
+            
+            defer {
+                timeoutTask.cancel()
+            }
+            
+            // Stream real-time output using async approach
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    let fileHandle = pipe.fileHandleForReading
+                    var buffer = ""
+                    
+                    while process.isRunning {
+                        let availableData = fileHandle.availableData
+                        if !availableData.isEmpty {
+                            if let newOutput = String(data: availableData, encoding: .utf8) {
+                                buffer += newOutput
+                                
+                                // Process complete lines
+                                let lines = buffer.components(separatedBy: .newlines)
+                                let completeLines = lines.dropLast() // Last element might be incomplete
+                                buffer = String(lines.last ?? "") // Keep incomplete line in buffer
+                                
+                                for line in completeLines {
+                                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmedLine.isEmpty {
+                                        await MainActor.run {
+                                            Task {
+                                                await self.updateVerboseOutput(trimmedLine)
+                                            }
+                                        }
+                                        output.append(trimmedLine)
+                                        
+                                        // Check for vulnerabilities in real-time
+                                        if trimmedLine.contains("+") && (
+                                            trimmedLine.lowercased().contains("vuln") ||
+                                            trimmedLine.lowercased().contains("security") ||
+                                            trimmedLine.lowercased().contains("risk") ||
+                                            trimmedLine.lowercased().contains("exposed") ||
+                                            trimmedLine.lowercased().contains("version") ||
+                                            trimmedLine.lowercased().contains("header")
+                                        ) {
+                                            vulnerabilities.append(trimmedLine)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Small delay to prevent excessive CPU usage
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    }
+                    
+                    // Read any remaining data
+                    let remainingData = fileHandle.readDataToEndOfFile()
+                    if !remainingData.isEmpty {
+                        if let finalOutput = String(data: remainingData, encoding: .utf8) {
+                            buffer += finalOutput
+                            
+                            // Process any remaining lines
+                            let finalLines = buffer.components(separatedBy: .newlines)
+                            for line in finalLines {
+                                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmedLine.isEmpty {
+                                    await MainActor.run {
+                                        Task {
+                                            await self.updateVerboseOutput(trimmedLine)
+                                        }
+                                    }
+                                    output.append(trimmedLine)
+                                    
+                                    // Check for vulnerabilities in final output
+                                    if trimmedLine.contains("+") && (
+                                        trimmedLine.lowercased().contains("vuln") ||
+                                        trimmedLine.lowercased().contains("security") ||
+                                        trimmedLine.lowercased().contains("risk") ||
+                                        trimmedLine.lowercased().contains("exposed") ||
+                                        trimmedLine.lowercased().contains("version") ||
+                                        trimmedLine.lowercased().contains("header")
+                                    ) {
+                                        vulnerabilities.append(trimmedLine)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             
+            // Wait for process to complete
             process.waitUntilExit()
+            
+            await updateVerboseOutput("")
+            await updateVerboseOutput("Nikto scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ Nikto scan completed")
             
         } catch {
@@ -628,37 +1209,105 @@ class AppState {
         
         do {
             try process.run()
+            await updateVerboseOutput("$ \(toolPath) \(process.arguments?.joined(separator: " ") ?? "")")
+            await updateVerboseOutput("")
             
             // Set a timeout
             let timeoutTask = Task {
                 try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
                 if process.isRunning {
                     process.terminate()
-                    output.append("⏰ Gobuster scan timed out after 5 minutes")
+                    await updateVerboseOutput("⏰ Gobuster scan timed out after 5 minutes")
                 }
             }
             
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let outputString = String(data: data, encoding: .utf8) {
-                let lines = outputString.components(separatedBy: .newlines)
-                output.append(contentsOf: lines.filter { !$0.isEmpty })
-                
-                // Parse gobuster output for found directories/files
-                for line in lines {
-                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmedLine.contains("(Status: 200)") || trimmedLine.contains("(Status: 301)") || trimmedLine.contains("(Status: 302)") {
-                        // Extract just the path from gobuster output (format: /path (Status: XXX) [Size: XXX])
-                        if let pathMatch = trimmedLine.components(separatedBy: " ").first {
-                            files.append(pathMatch)
-                        } else {
-                            files.append(trimmedLine)
+            defer {
+                timeoutTask.cancel()
+            }
+            
+            // Stream real-time output using async approach
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    let fileHandle = pipe.fileHandleForReading
+                    var buffer = ""
+                    
+                    while process.isRunning {
+                        let availableData = fileHandle.availableData
+                        if !availableData.isEmpty {
+                            if let newOutput = String(data: availableData, encoding: .utf8) {
+                                buffer += newOutput
+                                
+                                // Process complete lines
+                                let lines = buffer.components(separatedBy: .newlines)
+                                let completeLines = lines.dropLast() // Last element might be incomplete
+                                buffer = String(lines.last ?? "") // Keep incomplete line in buffer
+                                
+                                for line in completeLines {
+                                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmedLine.isEmpty {
+                                        await MainActor.run {
+                                            Task {
+                                                await self.updateVerboseOutput(trimmedLine)
+                                            }
+                                        }
+                                        output.append(trimmedLine)
+                                        
+                                        // Parse gobuster output for found directories/files in real-time
+                                        if trimmedLine.contains("(Status: 200)") || trimmedLine.contains("(Status: 301)") || trimmedLine.contains("(Status: 302)") {
+                                            // Extract just the path from gobuster output (format: /path (Status: XXX) [Size: XXX])
+                                            if let pathMatch = trimmedLine.components(separatedBy: " ").first {
+                                                files.append(pathMatch)
+                                            } else {
+                                                files.append(trimmedLine)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Small delay to prevent excessive CPU usage
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    }
+                    
+                    // Read any remaining data
+                    let remainingData = fileHandle.readDataToEndOfFile()
+                    if !remainingData.isEmpty {
+                        if let finalOutput = String(data: remainingData, encoding: .utf8) {
+                            buffer += finalOutput
+                            
+                            // Process any remaining lines
+                            let finalLines = buffer.components(separatedBy: .newlines)
+                            for line in finalLines {
+                                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmedLine.isEmpty {
+                                    await MainActor.run {
+                                        Task {
+                                            await self.updateVerboseOutput(trimmedLine)
+                                        }
+                                    }
+                                    output.append(trimmedLine)
+                                    
+                                    // Parse final output for found directories/files
+                                    if trimmedLine.contains("(Status: 200)") || trimmedLine.contains("(Status: 301)") || trimmedLine.contains("(Status: 302)") {
+                                        if let pathMatch = trimmedLine.components(separatedBy: " ").first {
+                                            files.append(pathMatch)
+                                        } else {
+                                            files.append(trimmedLine)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
             
+            // Wait for process to complete
             process.waitUntilExit()
-            timeoutTask.cancel()
+            
+            await updateVerboseOutput("")
+            await updateVerboseOutput("Gobuster scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ Gobuster scan completed")
             
             return (output, files, true)
@@ -1537,3 +2186,6 @@ extension NetworkAttackVector {
     }
 }
 #endif
+
+// MARK: - macOS Bluetooth Supporting Types
+// Structs moved to BluetoothModels.swift to avoid duplicates

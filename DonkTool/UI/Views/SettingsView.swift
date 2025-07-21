@@ -19,7 +19,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            VStack(alignment: .leading, spacing: .spacing_md) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Image(systemName: "gear")
                         .font(.title2)
@@ -27,22 +27,22 @@ struct SettingsView: View {
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Settings")
-                            .font(.headerPrimary)
+                            .font(.title2.weight(.bold))
                         
                         Text("Configure application preferences")
-                            .font(.captionPrimary)
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     
                     Spacer()
                 }
             }
-            .standardContainer()
+            .padding(16)
             
             Divider()
             
             ScrollView {
-                VStack(spacing: .spacing_lg) {
+                VStack(spacing: 24) {
                     // Network Scanning Section
                     networkScanningSection
                     
@@ -52,7 +52,7 @@ struct SettingsView: View {
                     // Security Section
                     securitySection
                 }
-                .padding(.spacing_md)
+                .padding(16)
             }
         }
         .navigationTitle("Settings")
@@ -67,9 +67,12 @@ struct SettingsView: View {
     }
     
     private var networkScanningSection: some View {
-        VStack(alignment: .leading, spacing: .spacing_md) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Network Scanning")
-                .sectionHeader()
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             
             VStack(spacing: .spacing_sm) {
                 // Scan Timeout
@@ -119,9 +122,12 @@ struct SettingsView: View {
     }
     
     private var generalSection: some View {
-        VStack(alignment: .leading, spacing: .spacing_md) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("General")
-                .sectionHeader()
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             
             VStack(spacing: .spacing_sm) {
                 Toggle("Enable Logging", isOn: $enableLogging)
@@ -137,9 +143,12 @@ struct SettingsView: View {
     }
     
     private var securitySection: some View {
-        VStack(alignment: .leading, spacing: .spacing_md) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Security")
-                .sectionHeader()
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             
             VStack(spacing: .spacing_sm) {
                 Button("Clear All Data") {

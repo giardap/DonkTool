@@ -1,0 +1,34 @@
+{
+  "integration_engine": {
+    "auto_triggering_enabled": true,
+    "credential_testing_enabled": true,
+    "cve_correlation_enabled": true,
+    "bluetooth_correlation_enabled": true,
+    "max_concurrent_tests": 5,
+    "credential_test_timeout": 30,
+    "web_trigger_ports": [80, 443, 8080, 8443, 3000, 5000, 8000, 9000],
+    "credential_test_services": {
+      "ssh": {"port": 22, "enabled": true},
+      "ftp": {"port": 21, "enabled": true},
+      "telnet": {"port": 23, "enabled": true},
+      "mysql": {"port": 3306, "enabled": true},
+      "postgresql": {"port": 5432, "enabled": true},
+      "mongodb": {"port": 27017, "enabled": true},
+      "rdp": {"port": 3389, "enabled": true},
+      "smtp": {"port": 587, "enabled": true}
+    }
+  },
+  "credential_vault": {
+    "encryption_enabled": true,
+    "auto_testing_enabled": true,
+    "keychain_storage": true,
+    "max_credentials": 10000,
+    "test_frequency_hours": 24
+  },
+  "cve_correlation": {
+    "nist_api_enabled": true,
+    "exploit_db_enabled": true,
+    "auto_suggest_exploits": true,
+    "severity_threshold": "medium"
+  }
+}

@@ -17,10 +17,16 @@ struct ContentView: View {
         } detail: {
             DetailView()
         }
-        .overlay(alignment: .topTrailing) {
-            if appState.isNetworkScanning || appState.isWebScanning {
-                ActiveScansIndicator()
-                    .padding()
+        .overlay(alignment: .top) {
+            if appState.isNetworkScanning || appState.isWebScanning || appState.isBluetoothScanning {
+                VStack {
+                    ActiveScansNotificationBar()
+                        .animation(.easeInOut(duration: 0.3), value: appState.isNetworkScanning)
+                        .animation(.easeInOut(duration: 0.3), value: appState.isWebScanning)
+                        .animation(.easeInOut(duration: 0.3), value: appState.isBluetoothScanning)
+                    Spacer()
+                }
+                .padding(.top, 12)
             }
         }
     }
@@ -81,7 +87,7 @@ struct ModernSidebarView: View {
             Spacer()
             
             // Compact active scans indicator
-            if appState.isNetworkScanning || appState.isWebScanning {
+            if appState.isNetworkScanning || appState.isWebScanning || appState.isBluetoothScanning {
                 CompactActiveScansCard()
                     .padding(.horizontal, 16)
             }
@@ -98,6 +104,7 @@ struct ModernSidebarView: View {
         switch tab {
         case .networkScanner: return appState.isNetworkScanning
         case .webTesting: return appState.isWebScanning
+        case .bluetoothSecurity: return appState.isBluetoothScanning
         case .vulnerabilityDatabase: return appState.cveDatabase.isLoading || ExploitDatabase.shared.isUpdating
         case .metasploitConsole: return MetasploitManager.shared.isExecuting
         case .osintDashboard: return OSINTModule.shared.isGathering
@@ -167,6 +174,14 @@ struct CompactActiveScansCard: View {
                         title: "Web",
                         progress: appState.webScanProgress,
                         color: .green
+                    )
+                }
+                
+                if appState.isBluetoothScanning {
+                    CompactScanRow(
+                        title: "Bluetooth",
+                        progress: appState.bluetoothScanProgress,
+                        color: .purple
                     )
                 }
             }
@@ -253,6 +268,57 @@ struct CompactStatItem: View {
     }
 }
 
+struct ActiveScansNotificationBar: View {
+    @Environment(AppState.self) private var appState
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            // Active scan indicator with animation
+            HStack(spacing: 6) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.caption)
+                    .foregroundColor(.white)
+                    .symbolEffect(.pulse.byLayer, options: .repeating)
+                
+                Text("Security Scans Active")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+            }
+            
+            Divider()
+                .background(.white.opacity(0.3))
+                .frame(height: 16)
+            
+            // Individual scan badges
+            HStack(spacing: 6) {
+                if appState.isNetworkScanning {
+                    ModernScanBadge(type: "Network", color: .blue)
+                }
+                
+                if appState.isWebScanning {
+                    ModernScanBadge(type: "Web", color: .green)
+                }
+                
+                if appState.isBluetoothScanning {
+                    ModernScanBadge(type: "Bluetooth", color: .purple)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.regularMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+    }
+}
+
 struct ActiveScansIndicator: View {
     @Environment(AppState.self) private var appState
     
@@ -265,7 +331,42 @@ struct ActiveScansIndicator: View {
             if appState.isWebScanning {
                 ScanBadge(type: "Web", color: .green)
             }
+            
+            if appState.isBluetoothScanning {
+                ScanBadge(type: "Bluetooth", color: .purple)
+            }
         }
+    }
+}
+
+struct ModernScanBadge: View {
+    let type: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            ProgressView()
+                .scaleEffect(0.6)
+                .tint(.white)
+            
+            Text(type)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: color.opacity(0.3), radius: 2, x: 0, y: 1)
+        )
     }
 }
 
@@ -304,7 +405,7 @@ struct QuickActionButton: View {
             .frame(height: 36)
         }
         .buttonStyle(.borderedProminent)
-        .controlSize(.regular)
+        .controlSize(ControlSize.regular)
     }
 }
 
@@ -322,6 +423,8 @@ struct DetailView: View {
                 ModernNetworkScannerView()
             case .webTesting:
                 WebTestingView()
+            case .bluetoothSecurity:
+                MacOSBluetoothSecurityView()
             case .dosStressTesting:
                 DoSTestingView()
             case .metasploitConsole:

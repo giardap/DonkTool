@@ -2,14 +2,15 @@
 
 <div align="center">
 
-**A Comprehensive macOS Penetration Testing Suite**
+**Advanced macOS Penetration Testing & Security Assessment Suite**
 
 [![Platform](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/swift-5.9%2B-orange.svg)](https://swift.org/)
 [![Xcode](https://img.shields.io/badge/xcode-15.0%2B-blue.svg)](https://developer.apple.com/xcode/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Security](https://img.shields.io/badge/security-professional%20grade-red.svg)](#)
 
-*Professional-grade security testing tools with native macOS integration*
+*Professional-grade security testing with Bluetooth, Web, Network, and DoS capabilities*
 
 </div>
 
@@ -28,36 +29,54 @@
 
 ## 🎯 **Overview**
 
-DonkTool is a native macOS penetration testing suite built with Swift and SwiftUI, providing comprehensive security assessment capabilities for authorized testing scenarios. It integrates industry-standard tools with a modern, intuitive interface designed for security professionals.
+DonkTool is a native macOS penetration testing suite built with Swift and SwiftUI, providing comprehensive security assessment capabilities across multiple attack surfaces. It combines Bluetooth security testing, web application analysis, network reconnaissance, and DoS testing with a modern, professional interface designed for authorized security professionals.
 
 ### **Key Strengths**
-- 🚀 **Native Performance**: Swift-based for optimal macOS integration
-- 🎨 **Modern UI**: Dark-themed SwiftUI interface with real-time monitoring
+- 🚀 **Native Performance**: Swift-based for optimal macOS integration and CoreBluetooth support
+- 🎨 **Modern UI**: Professional dark-themed SwiftUI interface with real-time monitoring
 - 🔧 **Real Tool Integration**: Uses actual penetration testing tools, not simulations
 - 🛡️ **Ethical Safeguards**: Built-in authorization checks and ethical guidelines
-- 📊 **Comprehensive Reporting**: Detailed vulnerability reports and metrics
+- 📊 **Comprehensive Reporting**: Detailed vulnerability reports with CVE correlation
 - 🔄 **Real-Time Monitoring**: Live attack progress and output streaming
+- 📱 **Bluetooth Security**: Advanced Bluetooth LE and Classic security testing
+- 🌐 **Multi-Protocol Support**: HTTP/HTTPS, Bluetooth, TCP/UDP, and more
 
 ---
 
 ## 🚀 **Features**
 
+### **📱 Bluetooth Security Testing** (NEW!)
+- **Native macOS CoreBluetooth Integration** for real-time device discovery
+- **Bluetooth LE (BLE) Security Analysis** with vulnerability detection
+- **Classic Bluetooth Assessment** using IOBluetooth framework
+- **Advanced Attack Vectors**:
+  - BIAS (Bluetooth Impersonation Attack)
+  - KNOB (Key Negotiation of Bluetooth)
+  - BlueFrag vulnerability testing
+  - BLE pairing and authentication bypass
+  - Service enumeration and characteristic analysis
+- **Real-Time Device Monitoring** with RSSI tracking
+- **Professional Attack Execution** with live exploit code generation
+- **CVE Integration** with clickable exploit code viewing
+- **Evidence Generation** with detailed security analysis reports
+
 ### **🌐 Web Application Security Testing**
-- **SQL Injection Testing** with SQLMap integration
+- **SQL Injection Testing** with SQLMap integration and real-time output
 - **Cross-Site Scripting (XSS)** vulnerability detection
 - **Directory/File Enumeration** using Gobuster, Dirb, and FFuF
-- **SSL/TLS Analysis** with SSLyze
+- **SSL/TLS Analysis** with SSLyze and comprehensive cipher testing
 - **Comprehensive Vulnerability Scanning** via Nuclei (9000+ templates)
-- **HTTP Service Analysis** with HTTPx
-- **Subdomain Discovery** using Subfinder
-- **Web Crawling** with Katana
+- **HTTP Service Analysis** with HTTPx and technology detection
+- **Subdomain Discovery** using Subfinder with passive reconnaissance
+- **Advanced Web Fuzzing** with parameter discovery and custom payloads
 
 ### **🔍 Network Security Assessment**
-- **Port Scanning** with Nmap integration
-- **Service Enumeration** and version detection
-- **Network Discovery** and host identification
-- **Vulnerability Assessment** across network services
-- **Fast Content Discovery** using Feroxbuster (Rust-based)
+- **Advanced Port Scanning** with Nmap integration and service fingerprinting
+- **Service Enumeration** with version detection and vulnerability correlation
+- **Network Discovery** and host identification with attack vector mapping
+- **Vulnerability Assessment** across network services with CVE correlation
+- **Attack Execution Framework** with real exploit payload generation
+- **Professional Reporting** with detailed findings and remediation guidance
 
 ### **💥 DoS/Stress Testing (Authorized Use Only)**
 - **HTTP Load Testing** with WRK and Artillery
@@ -76,25 +95,29 @@ DonkTool is a native macOS penetration testing suite built with Swift and SwiftU
 - **Real-Time Attack Monitoring** with verbose output
 - **22 Attack Vectors** across 4 categories
 
-### **🗄️ CVE Management**
-- **Real-Time CVE Database** integration with NVD API
-- **Vulnerability Search** and correlation
-- **CVE-to-Attack Mapping** for targeted testing
-- **Database Updates** with rate limiting and caching
+### **🗄️ CVE Management & Intelligence**
+- **Live CVE Database** integration with NVD API and automatic updates
+- **Advanced Vulnerability Search** with filtering and correlation
+- **CVE-to-Attack Mapping** for targeted exploit testing
+- **Clickable Exploit Code Viewing** with professional attack analysis
+- **SearchSploit Integration** for exploit discovery and validation
+- **Real-Time CVE Monitoring** with severity-based alerting
 
-### **📊 Reporting & Analytics**
-- **Comprehensive Vulnerability Reports** with export capabilities
-- **Attack Results Analysis** with success rates and metrics
-- **Risk Assessment** with mitigation suggestions
-- **Performance Metrics** (response times, packet counts, bandwidth usage)
-- **Professional Documentation** generation
+### **📊 Advanced Reporting & Analytics**
+- **Professional Evidence Generation** with detailed security analysis
+- **Multi-Tab Attack Results** with exploit code and payload viewing
+- **Executive Summary Reports** with risk scoring and business impact
+- **Technical Deep-Dive Reports** with proof-of-concept demonstrations
+- **Export Capabilities** (PDF, HTML, JSON, CSV) for compliance requirements
+- **Attack Session Tracking** with comprehensive audit trails
 
-### **🎮 Active Attack Management**
-- **Real-Time Process Monitoring** with live output streaming
-- **Attack Session Management** with progress tracking
-- **Concurrent Attack Support** with process coordination
-- **Automatic Termination** after specified duration
-- **Error Handling** with detailed logging
+### **🎮 Professional Attack Management**
+- **Real-Time Attack Execution** with live output streaming and progress tracking
+- **Multi-Protocol Attack Coordination** across Bluetooth, Web, and Network services
+- **Attack Session Management** with concurrent execution support
+- **Professional Evidence Collection** with timestamped findings
+- **Automatic Attack Termination** with configurable duration limits
+- **Comprehensive Error Handling** with detailed logging and recovery
 
 ---
 
@@ -113,16 +136,32 @@ DonkTool is a native macOS penetration testing suite built with Swift and SwiftU
    cd DonkTool
    ```
 
-2. **Install Penetration Testing Tools**
+2. **Master Installation (Recommended)**
    ```bash
-   # Run the automated installation script
-   ./install-pentest-tools-fixed.sh
+   # Run the comprehensive master installation script
+   ./master-install.sh
    
-   # Install DoS testing tools (requires authorization confirmation)
-   ./install_dos_tools_fixed.sh
+   # This will install:
+   # - All core penetration testing tools
+   # - Web application security tools
+   # - Network assessment tools
+   # - Bluetooth security tools
+   # - DoS testing tools (with authorization prompts)
    ```
 
-3. **Build and Run**
+3. **Alternative: Individual Tool Installation**
+   ```bash
+   # Core penetration testing tools
+   ./install-pentest-tools.sh
+   
+   # DoS testing tools (requires authorization confirmation)
+   ./install_dos_tools.sh
+   
+   # Bluetooth security tools
+   ./macos_bluetooth_tools.sh
+   ```
+
+4. **Build and Run**
    ```bash
    # Open in Xcode
    open DonkTool.xcodeproj
@@ -131,24 +170,36 @@ DonkTool is a native macOS penetration testing suite built with Swift and SwiftU
    xcodebuild -project DonkTool.xcodeproj -scheme DonkTool build
    ```
 
-4. **Launch Application**
+5. **Launch Application**
    - Build and run in Xcode (⌘+R)
    - Review and accept the ethical use policy
-   - Verify tool installation status
+   - Verify tool installation status in Settings
    - Begin authorized security testing
 
 ### **Tool Installation Status**
 See [TOOLS_STATUS.md](TOOLS_STATUS.md) for complete installation details.
 
-**Core Tools (✅ Working):**
+**Core Penetration Testing Tools (✅ Working):**
 - nmap, nikto, sqlmap, gobuster, dirb, ffuf
 - nuclei, httpx, subfinder, katana
 - sslyze, dirsearch, feroxbuster
-- wrk, artillery (load testing)
+- hydra, john, hashcat, metasploit
 
-**DoS Tools (✅ Working):**
+**Web Application Security Tools (✅ Working):**
+- burp-suite, zaproxy, wfuzz, xsstrike
+- testssl.sh, sslscan, whatweb
+- dirb, gobuster, ffuf, feroxbuster
+
+**Bluetooth Security Tools (✅ Working):**
+- Native macOS CoreBluetooth and IOBluetooth frameworks
+- bluez-tools, ubertooth (via Homebrew)
+- bettercap, hcitool, gatttool
+- Custom Swift-based Bluetooth security framework
+
+**DoS Testing Tools (✅ Working):**
 - slowhttptest, goldeneye, hulk, t50, thc-ssl-dos
 - mhddos, torshammer, pyloris, xerxes, pentmenu, hyenae
+- wrk, artillery, siege (load testing)
 
 ---
 
@@ -156,10 +207,32 @@ See [TOOLS_STATUS.md](TOOLS_STATUS.md) for complete installation details.
 
 ### **🎯 Dashboard Overview**
 The main dashboard provides:
-- **Vulnerability Summary** with statistics
-- **Active Attack Monitoring** 
-- **Recent CVE Updates**
-- **Quick Access** to all modules
+- **Multi-Protocol Security Overview** with Bluetooth, Web, and Network statistics
+- **Real-Time Attack Monitoring** across all attack surfaces
+- **CVE Intelligence** with recent updates and clickable exploits
+- **Quick Access** to all security testing modules
+- **Evidence Manager** with professional reporting capabilities
+
+### **📱 Bluetooth Security Testing** (NEW!)
+1. **Device Discovery**
+   - Automatic scanning for Bluetooth LE and Classic devices
+   - Real-time RSSI monitoring and device tracking
+   - Device classification and manufacturer identification
+
+2. **Security Analysis**
+   - Comprehensive vulnerability assessment
+   - CVE correlation with Bluetooth-specific vulnerabilities
+   - Service enumeration and characteristic analysis
+
+3. **Attack Execution**
+   - Professional attack vector selection
+   - Real-time exploit code generation
+   - Live attack execution with evidence collection
+
+4. **CVE Integration**
+   - Click on "View Exploit" for detailed attack code
+   - Professional exploit analysis with warnings
+   - Links to official CVE databases
 
 ### **🔍 Network Scanner**
 1. **Configure Target**
@@ -168,14 +241,14 @@ The main dashboard provides:
    - Choose scan type (TCP/UDP/SYN)
 
 2. **Execute Scan**
-   - Real-time progress monitoring
+   - Real-time progress monitoring with corrected IP:PORT targeting
    - Service detection and enumeration
-   - Vulnerability identification
+   - Vulnerability identification with attack vector mapping
 
-3. **Analyze Results**
-   - Open ports and services
-   - Version information
-   - Potential vulnerabilities
+3. **Attack Execution**
+   - Click "Execute Attack" on discovered services
+   - Professional attack framework with real exploit payloads
+   - Multi-tab results viewing (Output, Exploit Code, Payload)
 
 ### **🌐 Web Application Testing**
 1. **Target Configuration**

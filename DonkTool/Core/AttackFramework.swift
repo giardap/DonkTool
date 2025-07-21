@@ -25,6 +25,16 @@ class AttackFramework {
         Array(activeAttacks.values).sorted { $0.startTime > $1.startTime }
     }
     
+    // Get only running sessions
+    var runningSessions: [AttackSession] {
+        activeAttacks.values.filter { $0.status == .running }.sorted { $0.startTime > $1.startTime }
+    }
+    
+    // Get completed sessions
+    var completedSessions: [AttackSession] {
+        activeAttacks.values.filter { $0.status == .completed || $0.status == .failed || $0.status == .stopped }.sorted { $0.startTime > $1.startTime }
+    }
+    
     // Reference to tool detection
     private let toolDetection = ToolDetection.shared
     
@@ -142,11 +152,31 @@ class AttackFramework {
             }
         }
         
+        // Generate evidence package automatically
+        sendRealTimeOutput("", sessionId: sessionId)
+        sendRealTimeOutput("=== Generating Evidence Package ===", sessionId: sessionId)
+        
+        Task {
+            if let evidencePackage = await EvidenceManager.shared.generateEvidencePackage(from: result) {
+                await MainActor.run {
+                    self.sendRealTimeOutput("📁 Evidence package generated: \(evidencePackage.packageName)", sessionId: sessionId)
+                    self.sendRealTimeOutput("📍 Location: \(evidencePackage.evidenceFiles.first?.filepath ?? "Unknown")", sessionId: sessionId)
+                    self.sendRealTimeOutput("📊 Files created: \(evidencePackage.evidenceFiles.count)", sessionId: sessionId)
+                }
+            } else {
+                await MainActor.run {
+                    self.sendRealTimeOutput("⚠️ Failed to generate evidence package", sessionId: sessionId)
+                }
+            }
+        }
+        
         await MainActor.run {
             // Keep completed sessions for a while (don't remove immediately)
             // activeAttacks.removeValue(forKey: sessionId)
             attackHistory.append(result)
-            isExecutingAttack = activeAttacks.isEmpty
+            
+            // Update isExecutingAttack based on whether there are any running attacks
+            isExecutingAttack = activeAttacks.values.contains { $0.status == .running }
         }
         
         return result
@@ -155,8 +185,28 @@ class AttackFramework {
     func stopAttack(_ sessionId: String) {
         if let session = activeAttacks[sessionId] {
             session.cancel()
+            // Update isExecutingAttack after stopping
+            isExecutingAttack = activeAttacks.values.contains { $0.status == .running }
+        }
+    }
+    
+    func cleanupCompletedSessions() {
+        let currentTime = Date()
+        let sessionTimeout: TimeInterval = 300 // Keep sessions for 5 minutes after completion
+        
+        let sessionsToRemove = activeAttacks.filter { (sessionId, session) in
+            if session.status == .completed || session.status == .failed || session.status == .stopped {
+                return currentTime.timeIntervalSince(session.startTime) > sessionTimeout
+            }
+            return false
+        }
+        
+        for (sessionId, _) in sessionsToRemove {
             activeAttacks.removeValue(forKey: sessionId)
         }
+        
+        // Update execution state after cleanup
+        isExecutingAttack = activeAttacks.values.contains { $0.status == .running }
     }
     
     func installTool(_ tool: AttackTool) async {
@@ -374,7 +424,7 @@ class AttackFramework {
         var discoveredServices: [String] = []
         
         output.append("Starting network reconnaissance...")
-        output.append("Target: \(session.target)")
+        output.append("Target: \(session.target):\(session.port)")
         
         // Execute the actual commands from the attack vector
         let substitutedCommands = session.attack.commands.map { command in
@@ -408,27 +458,109 @@ class AttackFramework {
         let startTime = Date()
         var output: [String] = []
         var foundVulnerabilities: [VulnerabilityFinding] = []
+        var discoveredFiles: [String] = []
         
         output.append("Starting comprehensive web vulnerability scan...")
         output.append("Target: http://\(session.target):\(session.port)")
         
-        // Use actual Nikto for web vulnerability scanning
+        sendRealTimeOutput("=== Comprehensive Web Vulnerability Scan ===", sessionId: session.sessionId)
+        sendRealTimeOutput("Target: http://\(session.target):\(session.port)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        // 1. HTTPx for service fingerprinting
+        sendRealTimeOutput("Phase 1: Service fingerprinting with HTTPx", sessionId: session.sessionId)
+        let httpxResult = await executeHTTPx(
+            target: session.target,
+            port: session.port,
+            session: session
+        )
+        output.append(contentsOf: httpxResult.output)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        // 2. Nuclei for vulnerability detection (9000+ templates)
+        sendRealTimeOutput("Phase 2: Nuclei vulnerability scanning", sessionId: session.sessionId)
+        let nucleiResult = await executeNuclei(
+            target: session.target,
+            port: session.port,
+            session: session
+        )
+        output.append(contentsOf: nucleiResult.output)
+        foundVulnerabilities.append(contentsOf: nucleiResult.vulnerabilities)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        // 3. FFuF for advanced directory enumeration
+        sendRealTimeOutput("Phase 3: Advanced directory fuzzing with FFuF", sessionId: session.sessionId)
+        let ffufResult = await executeFFuF(
+            target: session.target,
+            port: session.port,
+            session: session
+        )
+        output.append(contentsOf: ffufResult.output)
+        discoveredFiles.append(contentsOf: ffufResult.files)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        // 4. WordPress scanning if detected
+        if httpxResult.output.joined().lowercased().contains("wordpress") {
+            sendRealTimeOutput("Phase 4: WordPress vulnerability scanning", sessionId: session.sessionId)
+            let wpscanResult = await executeWPScan(
+                target: session.target,
+                port: session.port,
+                session: session
+            )
+            output.append(contentsOf: wpscanResult.output)
+            foundVulnerabilities.append(contentsOf: wpscanResult.vulnerabilities)
+            sendRealTimeOutput("", sessionId: session.sessionId)
+        }
+        
+        // 5. SSL/TLS scanning for HTTPS services
+        if session.port == 443 || session.port == 8443 {
+            sendRealTimeOutput("Phase 5: SSL/TLS security analysis", sessionId: session.sessionId)
+            let sslscanResult = await executeSSLScan(
+                target: session.target,
+                port: session.port,
+                session: session
+            )
+            output.append(contentsOf: sslscanResult.output)
+            foundVulnerabilities.append(contentsOf: sslscanResult.vulnerabilities)
+            sendRealTimeOutput("", sessionId: session.sessionId)
+        }
+        
+        // 6. Legacy Nikto scan for additional coverage
+        sendRealTimeOutput("Phase 6: Legacy Nikto scan for additional coverage", sessionId: session.sessionId)
         let niktoResult = await executeNikto(
             target: session.target,
             port: session.port,
             session: session
         )
-        
-        // Use actual Gobuster for directory enumeration
-        let gobusterResult = await executeGobuster(
-            target: session.target,
-            port: session.port,
-            session: session
-        )
-        
         output.append(contentsOf: niktoResult.output)
-        output.append(contentsOf: gobusterResult.output)
         foundVulnerabilities.append(contentsOf: niktoResult.vulnerabilities)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        // 7. Fallback Gobuster if FFuF failed
+        if discoveredFiles.isEmpty {
+            sendRealTimeOutput("Phase 7: Fallback directory enumeration with Gobuster", sessionId: session.sessionId)
+            let gobusterResult = await executeGobuster(
+                target: session.target,
+                port: session.port,
+                session: session
+            )
+            output.append(contentsOf: gobusterResult.output)
+            discoveredFiles.append(contentsOf: gobusterResult.files)
+        }
+        
+        // Summary
+        let summary = [
+            "",
+            "=== SCAN COMPLETED ===",
+            "Total vulnerabilities found: \(foundVulnerabilities.count)",
+            "Directories/files discovered: \(discoveredFiles.count)",
+            "High/Critical vulnerabilities: \(foundVulnerabilities.filter { $0.severity == "high" || $0.severity == "critical" }.count)"
+        ]
+        
+        output.append(contentsOf: summary)
+        for line in summary {
+            sendRealTimeOutput(line, sessionId: session.sessionId)
+        }
         
         return AttackResult(
             sessionId: session.sessionId,
@@ -437,11 +569,11 @@ class AttackFramework {
             port: session.port,
             startTime: startTime,
             endTime: Date(),
-            success: !foundVulnerabilities.isEmpty,
+            success: !foundVulnerabilities.isEmpty || !discoveredFiles.isEmpty,
             output: output,
             credentials: [],
             vulnerabilities: foundVulnerabilities,
-            files: gobusterResult.files
+            files: discoveredFiles
         )
     }
     
@@ -1365,6 +1497,360 @@ class AttackFramework {
         return (output, vulnerabilities)
     }
     
+    // MARK: - Advanced Tool Implementations
+    
+    private func executeNuclei(target: String, port: Int, session: AttackSession) async -> (output: [String], vulnerabilities: [VulnerabilityFinding]) {
+        var output: [String] = []
+        var vulnerabilities: [VulnerabilityFinding] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard let nucleiPath = toolDetection.getToolPath("nuclei") else {
+            let errorMsg = "Error: Nuclei not found in system PATH"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: nucleiPath)
+        
+        let targetURL = "http://\(target):\(port)"
+        process.arguments = [
+            "-u", targetURL,
+            "-silent",
+            "-json",
+            "-severity", "critical,high,medium"
+        ]
+        
+        let commandLine = "nuclei \(process.arguments?.joined(separator: " ") ?? "")"
+        sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let result = String(data: data, encoding: .utf8) ?? ""
+            
+            let lines = result.components(separatedBy: .newlines)
+            for line in lines {
+                output.append(line)
+                sendRealTimeOutput(line, sessionId: session.sessionId)
+                
+                // Parse JSON output for vulnerabilities
+                if line.contains("{") && line.contains("template-id") {
+                    if let jsonData = line.data(using: .utf8),
+                       let nucleiResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        
+                        let templateId = nucleiResult["template-id"] as? String ?? "Unknown"
+                        let info = nucleiResult["info"] as? [String: Any]
+                        let severity = info?["severity"] as? String ?? "low"
+                        let name = info?["name"] as? String ?? "Nuclei Detection"
+                        
+                        let vulnerability = VulnerabilityFinding(
+                            type: "Nuclei Template: \(templateId)",
+                            severity: severity,
+                            description: name,
+                            proof: line,
+                            recommendation: "Review and patch the identified vulnerability"
+                        )
+                        vulnerabilities.append(vulnerability)
+                    }
+                }
+            }
+            
+        } catch {
+            let errorMsg = "Error executing Nuclei: \(error.localizedDescription)"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeHTTPx(target: String, port: Int, session: AttackSession) async -> (output: [String], services: [String]) {
+        var output: [String] = []
+        var services: [String] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard let httpxPath = toolDetection.getToolPath("httpx") else {
+            let errorMsg = "Error: HTTPx not found in system PATH"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            return (output, services)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: httpxPath)
+        
+        let targetURL = "\(target):\(port)"
+        process.arguments = [
+            "-u", targetURL,
+            "-title",
+            "-tech-detect",
+            "-status-code",
+            "-content-length",
+            "-silent"
+        ]
+        
+        let commandLine = "httpx \(process.arguments?.joined(separator: " ") ?? "")"
+        sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let result = String(data: data, encoding: .utf8) ?? ""
+            
+            let lines = result.components(separatedBy: .newlines)
+            for line in lines {
+                if !line.isEmpty {
+                    output.append(line)
+                    services.append(line)
+                    sendRealTimeOutput(line, sessionId: session.sessionId)
+                }
+            }
+            
+        } catch {
+            let errorMsg = "Error executing HTTPx: \(error.localizedDescription)"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+        }
+        
+        return (output, services)
+    }
+    
+    private func executeWPScan(target: String, port: Int, session: AttackSession) async -> (output: [String], vulnerabilities: [VulnerabilityFinding]) {
+        var output: [String] = []
+        var vulnerabilities: [VulnerabilityFinding] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard let wpscanPath = toolDetection.getToolPath("wpscan") else {
+            let errorMsg = "Error: WPScan not found in system PATH"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: wpscanPath)
+        
+        let targetURL = "http://\(target):\(port)"
+        process.arguments = [
+            "--url", targetURL,
+            "--detection-mode", "aggressive",
+            "--enumerate", "p,t,u",
+            "--format", "json"
+        ]
+        
+        let commandLine = "wpscan \(process.arguments?.joined(separator: " ") ?? "")"
+        sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let result = String(data: data, encoding: .utf8) ?? ""
+            
+            output.append(result)
+            sendRealTimeOutput(result, sessionId: session.sessionId)
+            
+            // Parse WPScan JSON output
+            if let jsonData = result.data(using: .utf8),
+               let wpscanResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                
+                // Extract vulnerabilities
+                if let vulns = wpscanResult["vulnerabilities"] as? [[String: Any]] {
+                    for vuln in vulns {
+                        let title = vuln["title"] as? String ?? "WordPress Vulnerability"
+                        let references = vuln["references"] as? [String: Any]
+                        let wpvulndb = references?["wpvulndb"] as? [String] ?? []
+                        
+                        let vulnerability = VulnerabilityFinding(
+                            type: "WordPress Vulnerability",
+                            severity: "medium",
+                            description: title,
+                            proof: "WPScan detection: \(wpvulndb.joined(separator: ", "))",
+                            recommendation: "Update WordPress core, themes, and plugins"
+                        )
+                        vulnerabilities.append(vulnerability)
+                    }
+                }
+            }
+            
+        } catch {
+            let errorMsg = "Error executing WPScan: \(error.localizedDescription)"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
+    private func executeFFuF(target: String, port: Int, session: AttackSession) async -> (output: [String], files: [String]) {
+        var output: [String] = []
+        var files: [String] = []
+        
+        let wordlistPath = await createDirbWordlist()
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard let ffufPath = toolDetection.getToolPath("ffuf") else {
+            let errorMsg = "Error: FFuF not found in system PATH"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            return (output, files)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: ffufPath)
+        
+        let targetURL = "http://\(target):\(port)/FUZZ"
+        process.arguments = [
+            "-u", targetURL,
+            "-w", wordlistPath,
+            "-mc", "200,204,301,302,307,401,403",
+            "-t", "20",
+            "-silence"
+        ]
+        
+        let commandLine = "ffuf \(process.arguments?.joined(separator: " ") ?? "")"
+        sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let result = String(data: data, encoding: .utf8) ?? ""
+            
+            let lines = result.components(separatedBy: .newlines)
+            for line in lines {
+                output.append(line)
+                sendRealTimeOutput(line, sessionId: session.sessionId)
+                
+                // Parse FFuF output for discovered paths
+                if line.contains("Status:") && (line.contains("200") || line.contains("301") || line.contains("302")) {
+                    if let wordRange = line.range(of: ":: ") {
+                        let path = String(line[wordRange.upperBound...]).components(separatedBy: " ").first ?? ""
+                        if !path.isEmpty {
+                            files.append(path)
+                        }
+                    }
+                }
+            }
+            
+        } catch {
+            let errorMsg = "Error executing FFuF: \(error.localizedDescription)"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+        }
+        
+        return (output, files)
+    }
+    
+    private func executeSSLScan(target: String, port: Int, session: AttackSession) async -> (output: [String], vulnerabilities: [VulnerabilityFinding]) {
+        var output: [String] = []
+        var vulnerabilities: [VulnerabilityFinding] = []
+        
+        let process = Process()
+        let pipe = Pipe()
+        
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard let sslscanPath = toolDetection.getToolPath("sslscan") else {
+            let errorMsg = "Error: SSLScan not found in system PATH"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+            return (output, vulnerabilities)
+        }
+        
+        process.executableURL = URL(fileURLWithPath: sslscanPath)
+        process.arguments = [
+            "--targets=\(target):\(port)",
+            "--ssl2",
+            "--ssl3",
+            "--tlsall",
+            "--show-certificate"
+        ]
+        
+        let commandLine = "sslscan \(process.arguments?.joined(separator: " ") ?? "")"
+        sendRealTimeOutput("$ \(commandLine)", sessionId: session.sessionId)
+        sendRealTimeOutput("", sessionId: session.sessionId)
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let result = String(data: data, encoding: .utf8) ?? ""
+            
+            let lines = result.components(separatedBy: .newlines)
+            for line in lines {
+                output.append(line)
+                sendRealTimeOutput(line, sessionId: session.sessionId)
+                
+                // Check for SSL/TLS vulnerabilities
+                if line.lowercased().contains("sslv2") && line.lowercased().contains("enabled") {
+                    let vulnerability = VulnerabilityFinding(
+                        type: "SSL/TLS Vulnerability",
+                        severity: "high",
+                        description: "SSLv2 is enabled - deprecated and insecure protocol",
+                        proof: line,
+                        recommendation: "Disable SSLv2 and use TLS 1.2 or higher"
+                    )
+                    vulnerabilities.append(vulnerability)
+                }
+                
+                if line.lowercased().contains("sslv3") && line.lowercased().contains("enabled") {
+                    let vulnerability = VulnerabilityFinding(
+                        type: "SSL/TLS Vulnerability",
+                        severity: "high",
+                        description: "SSLv3 is enabled - vulnerable to POODLE attack",
+                        proof: line,
+                        recommendation: "Disable SSLv3 and use TLS 1.2 or higher"
+                    )
+                    vulnerabilities.append(vulnerability)
+                }
+                
+                if line.lowercased().contains("weak cipher") || line.lowercased().contains("null cipher") {
+                    let vulnerability = VulnerabilityFinding(
+                        type: "SSL/TLS Vulnerability",
+                        severity: "medium",
+                        description: "Weak or null cipher suites detected",
+                        proof: line,
+                        recommendation: "Configure strong cipher suites only"
+                    )
+                    vulnerabilities.append(vulnerability)
+                }
+            }
+            
+        } catch {
+            let errorMsg = "Error executing SSLScan: \(error.localizedDescription)"
+            output.append(errorMsg)
+            sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+        }
+        
+        return (output, vulnerabilities)
+    }
+    
     // MARK: - Utility Methods
     
     private func createWordlistsDirectory() -> String {
@@ -1663,6 +2149,26 @@ enum AttackTool: String, CaseIterable {
     case metasploit = "Metasploit"
     case burpsuite = "Burp Suite"
     case netcat = "Netcat"
+    case nuclei = "Nuclei"
+    case httpx = "HTTPx"
+    case subfinder = "Subfinder"
+    case ffuf = "FFuF"
+    case sslscan = "SSLScan"
+    case whatweb = "WhatWeb"
+    case wpscan = "WPScan"
+    case john = "John the Ripper"
+    case hashcat = "Hashcat"
+    case enum4linux = "Enum4linux"
+    case smbclient = "SMBClient"
+    case rpcclient = "RPCClient"
+    case ldapsearch = "LDAPSearch"
+    case snmpwalk = "SNMPWalk"
+    case crackmapexec = "CrackMapExec"
+    case responder = "Responder"
+    case impacket = "Impacket"
+    case bloodhound = "BloodHound"
+    case masscan = "Masscan"
+    case rustscan = "RustScan"
     
     var commandName: String {
         switch self {
@@ -1675,6 +2181,26 @@ enum AttackTool: String, CaseIterable {
         case .metasploit: return "msfconsole"
         case .burpsuite: return "burpsuite"
         case .netcat: return "netcat"
+        case .nuclei: return "nuclei"
+        case .httpx: return "httpx"
+        case .subfinder: return "subfinder"
+        case .ffuf: return "ffuf"
+        case .sslscan: return "sslscan"
+        case .whatweb: return "whatweb"
+        case .wpscan: return "wpscan"
+        case .john: return "john"
+        case .hashcat: return "hashcat"
+        case .enum4linux: return "enum4linux"
+        case .smbclient: return "smbclient"
+        case .rpcclient: return "rpcclient"
+        case .ldapsearch: return "ldapsearch"
+        case .snmpwalk: return "snmpwalk"
+        case .crackmapexec: return "crackmapexec"
+        case .responder: return "responder"
+        case .impacket: return "impacket-smbserver"
+        case .bloodhound: return "bloodhound"
+        case .masscan: return "masscan"
+        case .rustscan: return "rustscan"
         }
     }
     
@@ -1689,6 +2215,26 @@ enum AttackTool: String, CaseIterable {
         case .metasploit: return "metasploit"
         case .burpsuite: return "burp-suite"
         case .netcat: return "netcat"
+        case .nuclei: return "nuclei"
+        case .httpx: return "httpx"
+        case .subfinder: return "subfinder"
+        case .ffuf: return "ffuf"
+        case .sslscan: return "sslscan"
+        case .whatweb: return "whatweb"
+        case .wpscan: return "wpscan"
+        case .john: return "john-jumbo"
+        case .hashcat: return "hashcat"
+        case .enum4linux: return "enum4linux-ng"
+        case .smbclient: return "samba"
+        case .rpcclient: return "samba"
+        case .ldapsearch: return "openldap"
+        case .snmpwalk: return "net-snmp"
+        case .crackmapexec: return "crackmapexec"
+        case .responder: return "responder"
+        case .impacket: return "impacket"
+        case .bloodhound: return "bloodhound"
+        case .masscan: return "masscan"
+        case .rustscan: return "rustscan"
         }
     }
     
@@ -1703,6 +2249,26 @@ enum AttackTool: String, CaseIterable {
         case .metasploit: return "Penetration testing framework"
         case .burpsuite: return "Web application security testing"
         case .netcat: return "Network utility"
+        case .nuclei: return "Fast vulnerability scanner with 9000+ templates"
+        case .httpx: return "HTTP probe and service analyzer"
+        case .subfinder: return "Passive subdomain discovery tool"
+        case .ffuf: return "Fast web fuzzer written in Go"
+        case .sslscan: return "SSL/TLS configuration analyzer"
+        case .whatweb: return "Web application fingerprinting"
+        case .wpscan: return "WordPress vulnerability scanner"
+        case .john: return "Password hash cracker"
+        case .hashcat: return "Advanced password recovery tool"
+        case .enum4linux: return "SMB enumeration tool for Linux/Windows"
+        case .smbclient: return "SMB/CIFS client for accessing shares"
+        case .rpcclient: return "Windows RPC client for enumeration"
+        case .ldapsearch: return "LDAP directory search utility"
+        case .snmpwalk: return "SNMP network management scanner"
+        case .crackmapexec: return "Swiss army knife for pentesting Windows/AD"
+        case .responder: return "LLMNR, NBT-NS, and MDNS poisoner"
+        case .impacket: return "Python network protocol toolkit"
+        case .bloodhound: return "Active Directory attack path analysis"
+        case .masscan: return "Fast TCP/UDP port scanner"
+        case .rustscan: return "Modern port scanner built in Rust"
         }
     }
 }
@@ -1714,6 +2280,7 @@ class AttackSession {
     let target: String
     let port: Int
     let startTime: Date
+    var endTime: Date?
     var isCancelled = false
     var status: AttackStatus = .running
     var outputLines: [String] = []
@@ -1723,6 +2290,18 @@ class AttackSession {
     
     // Convenience properties for UI
     var attackName: String { attack.name }
+    
+    var duration: TimeInterval {
+        if let endTime = endTime {
+            return endTime.timeIntervalSince(startTime)
+        } else {
+            return Date().timeIntervalSince(startTime)
+        }
+    }
+    
+    var isCompleted: Bool {
+        return status == .completed || status == .failed || status == .stopped
+    }
     
     enum AttackStatus: String, CaseIterable {
         case running = "running"
@@ -1743,6 +2322,7 @@ class AttackSession {
     func cancel() {
         isCancelled = true
         status = .stopped
+        endTime = Date()
     }
     
     func addOutput(_ output: String) {
@@ -1759,10 +2339,12 @@ class AttackSession {
     
     func markCompleted() {
         status = .completed
+        endTime = Date()
     }
     
     func markFailed() {
         status = .failed
+        endTime = Date()
     }
 }
 
