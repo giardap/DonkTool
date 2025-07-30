@@ -594,7 +594,6 @@ extension Color {
     static let accentBackground = Color.blue.opacity(0.1)
     static let elevatedBackground = Color(NSColor.windowBackgroundColor)
     static let secondaryBackground = Color(NSColor.controlBackgroundColor)
-    static let borderPrimary = Color(NSColor.separatorColor)
     static let borderAccent = Color.blue.opacity(0.5)
 }
 
@@ -669,9 +668,9 @@ extension View {
     }
 }
 
-// MARK: - StatCard Component
+// MARK: - BluetoothStatCard Component
 
-struct StatCard: View {
+struct BluetoothStatCard: View {
     let title: String
     let value: String
     let color: Color

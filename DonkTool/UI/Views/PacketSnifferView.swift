@@ -515,7 +515,7 @@ class RealTimePacketSniffer: ObservableObject {
     
     private func processRawPacket(_ rawPacket: RawPacket, config: SnifferConfiguration) async -> CapturedPacket? {
         // Parse packet layers
-        let ethernetLayer = parseEthernetLayer(rawPacket.data)
+        _ = parseEthernetLayer(rawPacket.data)
         guard let ipLayer = parseIPLayer(rawPacket.data, offset: 14) else { return nil }
         
         // Filter by target IP if specified
@@ -1742,8 +1742,8 @@ class ProfessionalPacketEngine {
         var header = Data()
         
         // Similar port extraction as TCP
-        var sourcePort: UInt16 = 12345
-        var destPort: UInt16 = 53
+        let sourcePort: UInt16 = 12345
+        let destPort: UInt16 = 53
         
         header.append(Data([UInt8(sourcePort >> 8), UInt8(sourcePort & 0xFF)]))
         header.append(Data([UInt8(destPort >> 8), UInt8(destPort & 0xFF)]))
@@ -1826,7 +1826,7 @@ class ProfessionalPacketEngine {
                 var error: NSDictionary?
                 let result = appleScript.executeAndReturnError(&error)
                 
-                if error == nil && result != nil {
+                if error == nil {
                     continuation.resume(returning: true)
                 } else {
                     print("❌ Admin authentication failed: \(error?.description ?? "Unknown error")")
@@ -2097,7 +2097,7 @@ class LibPCAPEngine {
             let timestampSec = data.subdata(in: offset..<offset+4).withUnsafeBytes { $0.load(as: UInt32.self) }
             let timestampUsec = data.subdata(in: offset+4..<offset+8).withUnsafeBytes { $0.load(as: UInt32.self) }
             let capturedLength = data.subdata(in: offset+8..<offset+12).withUnsafeBytes { $0.load(as: UInt32.self) }
-            let originalLength = data.subdata(in: offset+12..<offset+16).withUnsafeBytes { $0.load(as: UInt32.self) }
+            _ = data.subdata(in: offset+12..<offset+16).withUnsafeBytes { $0.load(as: UInt32.self) }
             
             offset += 16
             

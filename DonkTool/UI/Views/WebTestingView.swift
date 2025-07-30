@@ -313,6 +313,7 @@ struct WebTestingView: View {
         .onDisappear {
             removeIntegrationListeners()
         }
+        .attackExecutionSheet()
     }
     
     // MARK: - Integration Engine Hooks
@@ -364,6 +365,11 @@ struct WebScanResultRowView: View {
     let result: WebScanResult
     @State private var isExpanded = false
     @State private var selectedTab = 0 // 0: Findings, 1: Full Output
+    
+    // Define StatusType locally
+    enum StatusType {
+        case success, warning, danger, info, neutral
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -553,7 +559,7 @@ struct WebScanResultRowView: View {
         .padding(.vertical, 8)
     }
     
-    private func getSeverityStatus(_ severity: WebScanResult.Severity) -> StatusIndicator.StatusType {
+    private func getSeverityStatus(_ severity: WebScanResult.Severity) -> StatusType {
         switch severity {
         case .critical: return .danger
         case .high: return .danger

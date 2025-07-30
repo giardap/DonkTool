@@ -9,21 +9,25 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @State private var showContent = false
     
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             ModernSidebarView()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 320)
+                .fadeIn(delay: 0.1)
         } detail: {
             DetailView()
+                .fadeIn(delay: 0.2)
         }
         .overlay(alignment: .top) {
             if appState.isNetworkScanning || appState.isWebScanning || appState.isBluetoothScanning {
                 VStack {
                     ActiveScansNotificationBar()
-                        .animation(.easeInOut(duration: 0.3), value: appState.isNetworkScanning)
-                        .animation(.easeInOut(duration: 0.3), value: appState.isWebScanning)
-                        .animation(.easeInOut(duration: 0.3), value: appState.isBluetoothScanning)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .animation(.smoothSpring, value: appState.isNetworkScanning)
+                        .animation(.smoothSpring, value: appState.isWebScanning)
+                        .animation(.smoothSpring, value: appState.isBluetoothScanning)
                     Spacer()
                 }
                 .padding(.top, 12)
@@ -34,6 +38,7 @@ struct ContentView: View {
 
 struct ModernSidebarView: View {
     @Environment(AppState.self) private var appState
+    @State private var hoveredSection: String?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +52,8 @@ struct ModernSidebarView: View {
                             startPoint: .topLeading, 
                             endPoint: .bottomTrailing
                         ))
+                        .scaleEffect(1.0)
+                        .animation(.bounceSpring, value: hoveredSection)
                     
                     VStack(alignment: .leading, spacing: 3) {
                         Text("DonkTool")
@@ -63,33 +70,37 @@ struct ModernSidebarView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
             }
-            .background(Color.surfaceBackground)
+            .background(Color.appSurfaceBackground)
             
             Divider()
             
-            // Simplified navigation
-            VStack(spacing: 8) {
-                ForEach(AppState.MainTab.allCases, id: \.self) { tab in
-                    CleanTabButton(
-                        tab: tab,
-                        isSelected: appState.currentTab == tab,
-                        hasActivity: hasActivity(for: tab)
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            appState.currentTab = tab
+            // Simplified navigation with scroll view
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(Array(AppState.MainTab.allCases.enumerated()), id: \.element) { index, tab in
+                        CleanTabButton(
+                            tab: tab,
+                            isSelected: appState.currentTab == tab,
+                            hasActivity: hasActivity(for: tab)
+                        ) {
+                            withAnimation(.smoothSpring) {
+                                appState.currentTab = tab
+                            }
                         }
+                        .slideIn(from: .leading, delay: Double(index) * 0.05)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
             
-            Spacer()
+            Spacer(minLength: 0)
             
             // Compact active scans indicator
             if appState.isNetworkScanning || appState.isWebScanning || appState.isBluetoothScanning {
                 CompactActiveScansCard()
                     .padding(.horizontal, 16)
+                    .transition(.scaleAndFade)
             }
             
             // Quick stats at bottom
@@ -97,13 +108,12 @@ struct ModernSidebarView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
         }
-        .background(Color.primaryBackground)
+        .background(Color.appPrimaryBackground)
     }
     
     private func hasActivity(for tab: AppState.MainTab) -> Bool {
         switch tab {
-        case .networkScanner: return appState.isNetworkScanning
-        case .webTesting: return appState.isWebScanning
+        case .securityScanner: return appState.isNetworkScanning || appState.isWebScanning
         case .bluetoothSecurity: return appState.isBluetoothScanning
         case .vulnerabilityDatabase: return appState.cveDatabase.isLoading || ExploitDatabase.shared.isUpdating
         case .metasploitConsole: return MetasploitManager.shared.isExecuting
@@ -118,6 +128,7 @@ struct CleanTabButton: View {
     let isSelected: Bool
     let hasActivity: Bool
     let action: () -> Void
+    @State private var isHovered = false
     
     var body: some View {
         Button(action: action) {
@@ -137,6 +148,7 @@ struct CleanTabButton: View {
                     Circle()
                         .fill(.orange)
                         .frame(width: 8, height: 8)
+                        .pulse(duration: 2.0)
                 }
             }
             .padding(.horizontal, 12)
@@ -147,11 +159,18 @@ struct CleanTabButton: View {
             )
         }
         .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .onHover { hovering in
+            withAnimation(.quickEaseInOut) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
 struct CompactActiveScansCard: View {
     @Environment(AppState.self) private var appState
+    @State private var showContent = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -167,6 +186,7 @@ struct CompactActiveScansCard: View {
                         progress: appState.networkScanProgress,
                         color: .blue
                     )
+                    .transition(.slideAndFade)
                 }
                 
                 if appState.isWebScanning {
@@ -187,7 +207,7 @@ struct CompactActiveScansCard: View {
             }
         }
         .padding(12)
-        .background(Color.warningBackground)
+        .background(Color.warningOrange.opacity(0.1))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -244,7 +264,7 @@ struct CompactStatsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .cornerRadius(6)
     }
 }
@@ -391,7 +411,7 @@ struct ScanBadge: View {
     }
 }
 
-struct QuickActionButton: View {
+struct QuickScanButton: View {
     var body: some View {
         Button(action: {
             // Quick scan action
@@ -416,19 +436,17 @@ struct DetailView: View {
         Group {
             switch appState.currentTab {
             case .dashboard:
-                ModernDashboardView()
+                UltraModernDashboard()
             case .vulnerabilityDatabase:
-                AdvancedExploitDatabaseView()
-            case .networkScanner:
-                ModernNetworkScannerView()
-            case .webTesting:
-                WebTestingView()
+                CVEManagerView()  // AdvancedExploitDatabaseView()
+            case .securityScanner:
+                UnifiedSecurityScanner()
             case .packetSniffer:
-                PacketSnifferView()
+                UltraModernPacketSniffer()
             case .bluetoothSecurity:
-                MacOSBluetoothSecurityView()
+                UltraModernBluetoothSecurity()
             case .dosStressTesting:
-                DoSTestingView()
+                ModernDoSTestingView()
             case .metasploitConsole:
                 AdvancedMetasploitConsoleView()
             case .osintDashboard:
@@ -436,15 +454,21 @@ struct DetailView: View {
             case .activeAttacks:
                 ActiveAttacksView()
             case .reporting:
-                ReportingView()
+                ModernReportingView()
             case .scriptLoader:
                 ScriptLoaderView()
+            case .ivreIntelligence:
+                IVREIntegrationView()
+            case .perimeterScanner:
+                PerimeterScannerView()
+            case .offensiveSecurity:
+                OffensiveSecurityView()
             case .settings:
-                SettingsView()
+                ModernSettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.primaryBackground)
+        .background(Color.appPrimaryBackground)
     }
 }
 

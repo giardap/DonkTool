@@ -13,20 +13,40 @@ class MetasploitManager: ObservableObject {
     static let shared = MetasploitManager()
     
     @Published var isConnected = false
+    @Published var isConnecting = false
+    @Published var isInstalled = false
     @Published var isExecuting = false
     @Published var consoleOutput = ""
     @Published var availablePayloads: [String] = []
     @Published var activeSession: MetasploitSession?
-    @Published var sessions: [MetasploitSession] = []
+    @Published var activeSessions: [MetasploitSession] = []
+    @Published var modules: [MetasploitModule] = []
+    @Published var moduleCount = 0
     
     private var msfConsoleProcess: Process?
     private let outputQueue = DispatchQueue(label: "metasploit-output", qos: .utility)
     
     private init() {
+        checkInstallation()
         loadAvailablePayloads()
+        loadSampleModules()
+    }
+    
+    private func checkInstallation() {
+        isInstalled = ToolManager.shared.checkToolInstallation(tool: "msfconsole").isInstalled
     }
     
     // MARK: - Connection Management
+    
+    func connect() {
+        Task {
+            await connectToMetasploit()
+        }
+    }
+    
+    func disconnect() {
+        disconnectFromMetasploit()
+    }
     
     func connectToMetasploit() async -> Bool {
         guard ToolDetection.shared.isToolInstalled("msfconsole") else {
@@ -116,6 +136,7 @@ class MetasploitManager: ObservableObject {
         }
         msfConsoleProcess = nil
         isConnected = false
+        isConnecting = false
         consoleOutput += "🔌 Disconnected from Metasploit Framework\n"
     }
     
@@ -129,7 +150,7 @@ class MetasploitManager: ObservableObject {
         isExecuting = true
         
         let commands = [
-            "use \(module.fullName)",
+            "use \(module.fullPath)",
             "set RHOSTS \(target)",
             "set LHOST \(lhost)",
             "set LPORT \(lport)",
@@ -154,12 +175,15 @@ class MetasploitManager: ObservableObject {
         if let sessionId = sessionId {
             let session = MetasploitSession(
                 id: sessionId,
+                sessionId: Int(sessionId.filter { $0.isNumber }) ?? 1,
+                type: "meterpreter",
+                info: "Remote shell on \(target)",
                 target: target,
-                sessionType: "meterpreter",
+                exploit: "multi/handler",
                 connectedAt: Date(),
                 isActive: true
             )
-            sessions.append(session)
+            activeSessions.append(session)
             activeSession = session
         }
         
@@ -305,7 +329,7 @@ class MetasploitManager: ObservableObject {
         let output = await executeCommand("sessions -k \(sessionId)")
         
         // Remove from local sessions list
-        sessions.removeAll { $0.id == sessionId }
+        activeSessions.removeAll { $0.id == sessionId }
         if activeSession?.id == sessionId {
             activeSession = nil
         }
@@ -420,12 +444,15 @@ class MetasploitManager: ObservableObject {
                 if components.count >= 4 {
                     let session = MetasploitSession(
                         id: components[0],
+                        sessionId: Int(components[0]) ?? 0,
+                        type: components[2],
+                        info: components.dropFirst(3).joined(separator: " "),
                         target: components.last ?? "Unknown",
-                        sessionType: components[2],
+                        exploit: "unknown",
                         connectedAt: Date(),
                         isActive: true
                     )
-                    sessions.append(session)
+                    activeSessions.append(session)
                 }
             }
         }
@@ -492,6 +519,90 @@ class MetasploitManager: ObservableObject {
         ]
     }
     
+    private func loadSampleModules() {
+        // Load sample modules for UI demonstration
+        modules = [
+            MetasploitModule(
+                id: UUID().uuidString,
+                name: "MS17-010 EternalBlue",
+                fullPath: "exploit/windows/smb/ms17_010_eternalblue",
+                type: "exploit",
+                rank: "Excellent",
+                description: "This module exploits a vulnerability in Microsoft SMBv1 servers",
+                platform: "Windows",
+                targets: ["Windows 7 x64", "Windows Server 2008 R2 x64", "Windows 10 x64"],
+                disclosureDate: Date(timeIntervalSince1970: 1489449600)
+            ),
+            MetasploitModule(
+                id: UUID().uuidString,
+                name: "Apache Struts CVE-2017-5638",
+                fullPath: "exploit/multi/http/struts2_content_type_ognl",
+                type: "exploit",
+                rank: "Excellent",
+                description: "This module exploits a remote code execution vulnerability in Apache Struts",
+                platform: "Multi",
+                targets: ["Universal"],
+                disclosureDate: Date(timeIntervalSince1970: 1488844800)
+            ),
+            MetasploitModule(
+                id: UUID().uuidString,
+                name: "SSH Login Scanner",
+                fullPath: "auxiliary/scanner/ssh/ssh_login",
+                type: "auxiliary",
+                rank: "Normal",
+                description: "This module will test ssh logins on a range of machines",
+                platform: "Multi",
+                targets: [],
+                disclosureDate: nil
+            )
+        ]
+        moduleCount = modules.count
+    }
+    
+    // MARK: - Module Operations
+    
+    func runExploit(_ module: MetasploitModule, rhosts: String, rport: String, lhost: String, lport: String, target: Int, completion: @escaping (String) -> Void) {
+        Task {
+            completion("Setting up exploit module...\n")
+            completion("use \(module.fullPath)\n")
+            completion("set RHOSTS \(rhosts)\n")
+            if !rport.isEmpty {
+                completion("set RPORT \(rport)\n")
+            }
+            completion("set LHOST \(lhost)\n")
+            completion("set LPORT \(lport)\n")
+            completion("set TARGET \(target)\n")
+            completion("exploit -j\n")
+            completion("[*] Exploit running as background job\n")
+            completion("[*] Started reverse TCP handler on \(lhost):\(lport)\n")
+            
+            // Simulate session creation
+            let session = MetasploitSession(
+                id: UUID().uuidString,
+                sessionId: activeSessions.count + 1,
+                type: "meterpreter",
+                info: "\(rhosts) (\(module.name))",
+                target: rhosts,
+                exploit: module.name,
+                connectedAt: Date(),
+                isActive: true
+            )
+            activeSessions.append(session)
+        }
+    }
+    
+    func interactWithSession(_ sessionId: String) {
+        consoleOutput += "sessions -i \(sessionId)\n"
+        consoleOutput += "[*] Starting interaction with session \(sessionId)...\n"
+    }
+    
+    func killSession(_ sessionId: String) {
+        activeSessions.removeAll { $0.id == sessionId }
+        consoleOutput += "sessions -k \(sessionId)\n"
+        consoleOutput += "[*] Killing session \(sessionId)...\n"
+        consoleOutput += "[+] Session \(sessionId) killed.\n"
+    }
+    
     func clearConsole() {
         consoleOutput = ""
     }
@@ -501,14 +612,29 @@ class MetasploitManager: ObservableObject {
 
 struct MetasploitSession: Identifiable, Codable {
     let id: String
+    let sessionId: Int
+    let type: String
+    let info: String
     let target: String
-    let sessionType: String
+    let exploit: String
     let connectedAt: Date
     var isActive: Bool
     
     var displayName: String {
-        "Session \(id) - \(target)"
+        "Session \(sessionId) - \(target)"
     }
+}
+
+struct MetasploitModule: Identifiable {
+    let id: String
+    let name: String
+    let fullPath: String
+    let type: String
+    let rank: String
+    let description: String
+    let platform: String
+    let targets: [String]
+    let disclosureDate: Date?
 }
 
 struct MetasploitExploitResult {

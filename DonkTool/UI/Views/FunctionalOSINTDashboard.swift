@@ -596,6 +596,42 @@ struct ModernFindingRow: View {
 
 // MARK: - Analysis Components
 
+struct FunctionalStatCard: View {
+    let title: String
+    let value: String
+    let color: Color
+    let icon: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.cardBackground)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
 struct AnalysisStatsSection: View {
     let findings: [OSINTFinding]
     
@@ -606,10 +642,10 @@ struct AnalysisStatsSection: View {
                 .fontWeight(.semibold)
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                StatCard(title: "Total", value: "\(findings.count)", color: .blue)
-                StatCard(title: "High Confidence", value: "\(highConfidenceCount)", color: .green)
-                StatCard(title: "Sources", value: "\(uniqueSourcesCount)", color: .orange)
-                StatCard(title: "Recent", value: "\(recentCount)", color: .purple)
+                StatCard(title: "Total", value: "\(findings.count)", color: .blue, icon: "doc.text.magnifyingglass")
+                StatCard(title: "High Confidence", value: "\(highConfidenceCount)", color: .green, icon: "checkmark.shield.fill")
+                StatCard(title: "Sources", value: "\(uniqueSourcesCount)", color: .orange, icon: "network")
+                StatCard(title: "Recent", value: "\(recentCount)", color: .purple, icon: "clock.fill")
             }
         }
     }
@@ -869,9 +905,39 @@ struct InlineAPISettingsView: View {
                     .foregroundColor(.secondary)
                 
                 VStack(spacing: 16) {
-                    APIKeyField(title: "Hunter.io API Key", key: "hunter", description: "Email finder and verification (25 free searches/month)")
-                    APIKeyField(title: "Have I Been Pwned API Key", key: "haveibeenpwned", description: "Data breach checking service ($3.50/month)")
-                    APIKeyField(title: "Google CSE API Key", key: "google_cse", description: "Custom search engine (100 free searches/day)")
+                    APIKeyField(
+                        title: "Hunter.io API Key",
+                        placeholder: "Enter Hunter.io API key",
+                        value: Binding(
+                            get: { apiKeys["hunter"] ?? "" },
+                            set: { apiKeys["hunter"] = $0 }
+                        ),
+                        helpText: "Email finder and verification (25 free searches/month)",
+                        website: "https://hunter.io/",
+                        isRequired: false
+                    )
+                    APIKeyField(
+                        title: "Have I Been Pwned API Key",
+                        placeholder: "Enter HIBP API key",
+                        value: Binding(
+                            get: { apiKeys["haveibeenpwned"] ?? "" },
+                            set: { apiKeys["haveibeenpwned"] = $0 }
+                        ),
+                        helpText: "Data breach checking service ($3.50/month)",
+                        website: "https://haveibeenpwned.com/API/v3",
+                        isRequired: false
+                    )
+                    APIKeyField(
+                        title: "Google CSE API Key",
+                        placeholder: "Enter Google CSE API key",
+                        value: Binding(
+                            get: { apiKeys["google_cse"] ?? "" },
+                            set: { apiKeys["google_cse"] = $0 }
+                        ),
+                        helpText: "Custom search engine (100 free searches/day)",
+                        website: "https://developers.google.com/custom-search/",
+                        isRequired: false
+                    )
                 }
                 
                 Spacer()
@@ -902,24 +968,38 @@ struct InlineAPISettingsView: View {
     }
 }
 
-struct APIKeyField: View {
+// MARK: - Component Views
+
+struct StatCard: View {
     let title: String
-    let key: String
-    let description: String
-    @State private var value: String = ""
+    let value: String
+    let color: Color
+    let icon: String
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(color)
+                Spacer()
+            }
+            
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(color)
+            
             Text(title)
-                .font(.headerTertiary)
-            
-            Text(description)
-                .font(.captionPrimary)
+                .font(.caption)
                 .foregroundColor(.secondary)
-            
-            SecureField("Enter API key", text: $value)
-                .textFieldStyle(.roundedBorder)
         }
+        .padding()
+        .background(Color.appCardBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

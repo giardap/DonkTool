@@ -672,9 +672,11 @@ class BackgroundWebTestManager {
         tests: Set<WebTest>,
         completion: @escaping ([WebTestResult]) -> Void
     ) {
-        appState?.isWebScanning = true
-        appState?.currentWebTarget = targetURL
-        appState?.webScanProgress = 0.0
+        Task { @MainActor in
+            appState?.isWebScanning = true
+            appState?.currentWebTarget = targetURL
+            appState?.webScanProgress = 0.0
+        }
         
         testTask = Task {
             let testsArray = Array(tests)
@@ -707,7 +709,9 @@ class BackgroundWebTestManager {
     
     func stopWebTest() {
         testTask?.cancel()
-        appState?.isWebScanning = false
+        Task { @MainActor in
+            appState?.isWebScanning = false
+        }
     }
     
     private func performWebTest(test: WebTest, url: String) async -> WebTestResult {

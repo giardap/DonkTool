@@ -70,6 +70,34 @@ class AttackFramework {
         }
     }
     
+    // Overloaded method for OffensiveAttackVector
+    func executeAttack(_ attack: OffensiveAttackVector, target: String, port: Int) async {
+        // Convert OffensiveAttackVector to regular AttackVector for execution
+        let attackVector = AttackVector(
+            name: attack.name,
+            description: attack.description,
+            severity: mapSeverity(attack.severity),
+            requirements: attack.requiredTools.map { tool in
+                ToolRequirement(name: tool.rawValue, type: .tool, description: "Required tool: \(tool.rawValue)")
+            },
+            commands: attack.commands,
+            references: ["Offensive Security Arsenal"]
+        )
+        
+        // Execute using the existing method
+        _ = await executeAttack(attackVector, target: target, port: port)
+    }
+    
+    private func mapSeverity(_ severity: AttackSeverity) -> Vulnerability.Severity {
+        switch severity {
+        case .info: return .info
+        case .low: return .low
+        case .medium: return .medium
+        case .high: return .high
+        case .critical: return .critical
+        }
+    }
+    
     func executeAttack(_ attack: AttackVector, target: String, port: Int) async -> AttackResult {
         print("🚀 ATTACK EXECUTION STARTED")
         print("🎯 Attack: \(attack.name)")

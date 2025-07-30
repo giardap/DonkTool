@@ -47,6 +47,7 @@ struct AttackExecutionView: View {
                     }
                     .padding(24)
                 }
+                .background(Color.appPrimaryBackground)
             }
             .navigationTitle("Attack Execution")
             .toolbar {
@@ -88,7 +89,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .overlay(
             Rectangle()
                 .frame(height: 1)
@@ -124,7 +125,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .cornerRadius(12)
     }
     
@@ -157,7 +158,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .cornerRadius(12)
     }
     
@@ -203,7 +204,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .cornerRadius(12)
     }
     
@@ -275,7 +276,7 @@ struct AttackExecutionView: View {
             }
         }
         .padding(20)
-        .background(Color.cardBackground)
+        .background(Color.appCardBackground)
         .cornerRadius(12)
     }
     
@@ -419,6 +420,27 @@ struct AttackExecutionView: View {
 }
 
 // MARK: - Supporting Views
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+            
+            Text(value)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+            
+            Spacer()
+        }
+    }
+}
 
 struct AttackSeverityBadge: View {
     let severity: AttackVector.AttackSeverity

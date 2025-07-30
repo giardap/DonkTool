@@ -8,9 +8,94 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Nmap XML Parser
+
+struct NmapScanResult {
+    var hostname: String = ""
+    var openPorts: [PortInfo] = []
+    var vulnerabilities: [VulnerabilityInfo] = []
+}
+
+struct PortInfo {
+    let number: Int
+    let service: String
+    let version: String
+    let state: String
+    
+    var isHighRisk: Bool {
+        // Define high-risk ports
+        let highRiskPorts = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 1433, 3306, 3389, 5432, 5900, 6379]
+        return highRiskPorts.contains(number)
+    }
+}
+
+struct VulnerabilityInfo {
+    let id: String
+    let title: String
+    let description: String
+    let severity: String
+}
+
+class NmapXMLParser: NSObject, XMLParserDelegate {
+    var results = NmapScanResult()
+    private var currentElement = ""
+    private var currentAttributes: [String: String] = [:]
+    private var currentPort: PortInfo?
+    
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        currentElement = elementName
+        currentAttributes = attributeDict
+        
+        switch elementName {
+        case "hostname":
+            if let name = attributeDict["name"] {
+                results.hostname = name
+            }
+        case "port":
+            if let portId = attributeDict["portid"], let portNum = Int(portId) {
+                currentPort = PortInfo(number: portNum, service: "", version: "", state: "")
+            }
+        case "state":
+            if let state = attributeDict["state"], currentPort != nil {
+                currentPort = PortInfo(
+                    number: currentPort!.number,
+                    service: currentPort!.service,
+                    version: currentPort!.version,
+                    state: state
+                )
+            }
+        case "service":
+            if let name = attributeDict["name"], let version = attributeDict["version"], currentPort != nil {
+                currentPort = PortInfo(
+                    number: currentPort!.number,
+                    service: name,
+                    version: version,
+                    state: currentPort!.state
+                )
+            } else if let name = attributeDict["name"], currentPort != nil {
+                currentPort = PortInfo(
+                    number: currentPort!.number,
+                    service: name,
+                    version: "",
+                    state: currentPort!.state
+                )
+            }
+        default:
+            break
+        }
+    }
+    
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        if elementName == "port", let port = currentPort, port.state == "open" {
+            results.openPorts.append(port)
+            currentPort = nil
+        }
+    }
+}
+
 // MARK: - Supporting Models (only those not in Models.swift)
 
-struct NetworkPortScanResult: Identifiable, Hashable {
+struct NetworkPortScanResult: Identifiable, Hashable, Equatable {
     let id = UUID()
     let port: Int
     let isOpen: Bool
@@ -21,7 +106,7 @@ struct NetworkPortScanResult: Identifiable, Hashable {
     let attackVectors: [NetworkAttackVector]
     let scanTime: Date = Date()
     
-    enum RiskLevel: String, Hashable {
+    enum RiskLevel: String, Hashable, Equatable {
         case none, low, medium, high
         
         var color: Color {
@@ -32,6 +117,17 @@ struct NetworkPortScanResult: Identifiable, Hashable {
             case .high: return .red
             }
         }
+    }
+    
+    static func == (lhs: NetworkPortScanResult, rhs: NetworkPortScanResult) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.port == rhs.port &&
+               lhs.isOpen == rhs.isOpen &&
+               lhs.service == rhs.service &&
+               lhs.version == rhs.version &&
+               lhs.banner == rhs.banner &&
+               lhs.riskLevel == rhs.riskLevel &&
+               lhs.attackVectors == rhs.attackVectors
     }
 }
 
@@ -74,26 +170,15 @@ struct NetworkAttackVector: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let description: String
-    let severity: Severity
+    let severity: WebScanResult.Severity
     let tools: [String]
     let commands: [String]
-    
-    enum Severity: String, Hashable {
-        case low, medium, high
-        
-        var color: Color {
-            switch self {
-            case .low: return .green
-            case .medium: return .orange
-            case .high: return .red
-            }
-        }
-    }
 }
 
 // MARK: - AppState
 
 @Observable
+@MainActor
 class AppState {
     var currentTab: MainTab = .dashboard
     var isScanning: Bool = false
@@ -106,10 +191,19 @@ class AppState {
     // Integration components
     var integrationEngine = IntegrationEngine.shared
     var credentialVault = CredentialVault.shared
+    var secureCredentialVault = SecureCredentialVault.shared
     var evidenceManager = EvidenceManager.shared
     
     // Network Scanning
     var isNetworkScanning: Bool = false
+    
+    // Perimeter Scanning
+    var isPerimeterScanning: Bool = false
+    var lastPerimeterScan: Date?
+    var perimeterScanProgress: Double = 0.0
+    var unauthorizedServicesCount: Int = 0
+    var complianceScore: Double = 0.95
+    var perimeterScannerManager = PerimeterScannerManager.shared
     var currentNetworkTarget: String = ""
     var networkScanProgress: Double = 0.0
     var networkScanResults: [NetworkPortScanResult] = []
@@ -121,6 +215,33 @@ class AppState {
     var webScanResults: [WebScanResult] = []
     var currentWebTestName: String = ""
     private var webScanTask: Task<Void, Never>?
+    
+    // Attack Execution Dialog
+    var showExecutionDialog: Bool = false
+    var currentAttackVector: AttackVector?
+    var currentAttackTarget: String = ""
+    var currentAttackPort: Int = 0
+    
+    // Sheet Management Methods
+    func resetExecutionDialog() {
+        showExecutionDialog = false
+        currentAttackVector = nil
+        currentAttackTarget = ""
+        currentAttackPort = 0
+    }
+    
+    func presentExecutionDialog(attackVector: AttackVector, target: String, port: Int = 0) {
+        // Use the new centralized sheet manager
+        SheetManager.shared.presentAttackExecution(attackVector: attackVector, target: target, port: port)
+        
+        // Keep old system for compatibility (will be phased out)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            self.currentAttackVector = attackVector
+            self.currentAttackTarget = target
+            self.currentAttackPort = port
+            self.showExecutionDialog = true
+        }
+    }
     
     // Professional Bluetooth Security Testing
     var isBluetoothScanning: Bool = false
@@ -155,9 +276,15 @@ class AppState {
     
     // Helper method for updating verbose output
     @MainActor
-    private func updateVerboseOutput(_ message: String) {
+    func updateVerboseOutput(_ message: String) {
         if isVerboseMode {
-            currentToolOutput.append(message)
+            if outputTimer != nil {
+                // Use batching if active
+                outputBuffer.append(message)
+            } else {
+                // Direct append if no batching
+                currentToolOutput.append(message)
+            }
         }
     }
     var selectedScanResult: ScanResult?
@@ -174,13 +301,15 @@ class AppState {
     enum MainTab: CaseIterable, Hashable {
         case dashboard
         case vulnerabilityDatabase
-        case networkScanner
-        case webTesting
+        case securityScanner // Unified Network & Web Testing
         case packetSniffer
         case bluetoothSecurity
         case dosStressTesting
         case metasploitConsole
         case osintDashboard
+        case ivreIntelligence
+        case perimeterScanner
+        case offensiveSecurity
         case activeAttacks
         case reporting
         case scriptLoader
@@ -190,13 +319,15 @@ class AppState {
             switch self {
             case .dashboard: return "Dashboard"
             case .vulnerabilityDatabase: return "Vulnerability Database"
-            case .networkScanner: return "Network Scanner"
-            case .webTesting: return "Web Testing"
+            case .securityScanner: return "Security Scanner"
             case .packetSniffer: return "Packet Sniffer"
             case .bluetoothSecurity: return "Bluetooth Security"
             case .dosStressTesting: return "DoS/Stress Testing"
             case .metasploitConsole: return "Metasploit Console"
             case .osintDashboard: return "OSINT Dashboard"
+            case .ivreIntelligence: return "IVRE Intelligence"
+            case .perimeterScanner: return "Perimeter Scanner"
+            case .offensiveSecurity: return "Offensive Security"
             case .activeAttacks: return "Active Attacks"
             case .reporting: return "Reporting"
             case .scriptLoader: return "Script Loader"
@@ -208,13 +339,15 @@ class AppState {
             switch self {
             case .dashboard: return "gauge"
             case .vulnerabilityDatabase: return "shield.checkerboard"
-            case .networkScanner: return "network"
-            case .webTesting: return "globe"
+            case .securityScanner: return "network.badge.shield.half.filled"
             case .packetSniffer: return "point.3.connected.trianglepath.dotted"
             case .bluetoothSecurity: return "antenna.radiowaves.left.and.right"
             case .dosStressTesting: return "exclamationmark.triangle.fill"
             case .metasploitConsole: return "terminal.fill"
             case .osintDashboard: return "binoculars.fill"
+            case .ivreIntelligence: return "globe.badge.chevron.backward"
+            case .perimeterScanner: return "shield.lefthalf.filled"
+            case .offensiveSecurity: return "hammer.fill"
             case .activeAttacks: return "bolt.badge.clock"
             case .reporting: return "doc.text"
             case .scriptLoader: return "doc.text.fill"
@@ -248,16 +381,346 @@ class AppState {
         targets.removeAll { $0.id == target.id }
     }
     
-    // Network Scan Methods
+    // MARK: - Real Network Scanning Implementation
+    
+    func performNetworkScan(target: String) async {
+        await MainActor.run {
+            isNetworkScanning = true
+            currentNetworkTarget = target
+            networkScanProgress = 0.0
+            toolExecutionStatus = "Initializing network scan..."
+        }
+        
+        print("🔧 Starting real network scan for target: \(target)")
+        
+        // Execute real network scanning tools with progress updates
+        await executeNmapPortScan(target: target)
+        
+        await MainActor.run {
+            networkScanProgress = 0.4
+            toolExecutionStatus = "Port scan complete, starting service detection..."
+        }
+        
+        await executeNmapServiceDetection(target: target)
+        
+        await MainActor.run {
+            networkScanProgress = 0.7
+            toolExecutionStatus = "Service detection complete, running vulnerability scripts..."
+        }
+        
+        await executeNmapVulnerabilityScripts(target: target)
+        
+        await MainActor.run {
+            isNetworkScanning = false
+            networkScanProgress = 1.0
+            toolExecutionStatus = "Network scan complete"
+        }
+        
+        print("✅ Network scan completed for \(target)")
+    }
+    
     func startNetworkScan(target: String, portRange: String) {
-        isNetworkScanning = true
-        currentNetworkTarget = target
-        // Mock scanning logic
+        Task {
+            await performNetworkScan(target: target)
+        }
     }
     
     func stopNetworkScan() {
         isNetworkScanning = false
         currentNetworkTarget = ""
+        toolExecutionStatus = "Scan stopped"
+    }
+    
+    // MARK: - Real Nmap Integration
+    
+    private func executeNmapPortScan(target: String) async {
+        await MainActor.run {
+            toolExecutionStatus = "Running Nmap port scan..."
+            networkScanProgress = 0.2
+        }
+        
+        let nmapPath = findNmapPath()
+        guard !nmapPath.isEmpty else {
+            print("❌ Nmap not found. Please install nmap: brew install nmap")
+            await MainActor.run {
+                toolExecutionStatus = "Error: Nmap not installed"
+            }
+            return
+        }
+        
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: nmapPath)
+            process.arguments = [
+                "-sT",  // TCP connect scan (no root required)
+                "-T4",  // Aggressive timing
+                "--top-ports", "100",  // Top 100 ports for speed
+                "-oX", "-",  // XML output to stdout
+                target
+            ]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            
+            print("🔧 Executing nmap command: \(nmapPath) \(process.arguments?.joined(separator: " ") ?? "")")
+            
+            try process.run()
+            
+            // Wait for process asynchronously with timeout to avoid blocking main thread
+            let timeoutResult = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    await withCheckedContinuation { continuation in
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            process.waitUntilExit()
+                            continuation.resume(returning: true)
+                        }
+                    }
+                }
+                
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 second timeout
+                    return false
+                }
+                
+                return await group.next() ?? false
+            }
+            
+            if !timeoutResult {
+                print("⚠️ Nmap port scan timed out after 30 seconds")
+                process.terminate()
+                await MainActor.run {
+                    toolExecutionStatus = "Port scan timed out"
+                }
+                return
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            print("📊 Nmap exit code: \(process.terminationStatus)")
+            if !output.isEmpty {
+                print("📊 Nmap output length: \(output.count) characters")
+                print("📊 First 500 chars: \(String(output.prefix(500)))")
+            } else {
+                print("⚠️ No nmap output received")
+            }
+            
+            await parseNmapResults(target: target, xmlOutput: output)
+            
+        } catch {
+            print("❌ Nmap execution failed: \(error)")
+            await MainActor.run {
+                toolExecutionStatus = "Nmap scan failed: \(error.localizedDescription)"
+            }
+        }
+    }
+    
+    private func executeNmapServiceDetection(target: String) async {
+        await MainActor.run {
+            toolExecutionStatus = "Running service detection..."
+            networkScanProgress = 0.5
+        }
+        
+        let nmapPath = findNmapPath()
+        guard !nmapPath.isEmpty else { return }
+        
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: nmapPath)
+            process.arguments = [
+                "-sT",  // TCP connect scan (no root required)
+                "-sV",  // Version detection
+                "-T4",  // Aggressive timing
+                "-oX", "-",  // XML output
+                target
+            ]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            
+            try process.run()
+            
+            // Wait for process asynchronously to avoid blocking main thread
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    process.waitUntilExit()
+                    continuation.resume()
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            await parseNmapServiceResults(target: target, xmlOutput: output)
+            
+        } catch {
+            print("❌ Nmap service detection failed: \(error)")
+        }
+    }
+    
+    private func executeNmapVulnerabilityScripts(target: String) async {
+        await MainActor.run {
+            toolExecutionStatus = "Running vulnerability scripts..."
+            networkScanProgress = 0.8
+        }
+        
+        let nmapPath = findNmapPath()
+        guard !nmapPath.isEmpty else { return }
+        
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: nmapPath)
+            process.arguments = [
+                "-sT",  // TCP connect scan (no root required)
+                "--script", "vuln",  // Vulnerability scripts
+                "-T4",
+                "-oX", "-",
+                target
+            ]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            
+            try process.run()
+            
+            // Wait for process asynchronously to avoid blocking main thread
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    process.waitUntilExit()
+                    continuation.resume()
+                }
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            await parseNmapVulnerabilityResults(target: target, xmlOutput: output)
+            
+        } catch {
+            print("❌ Nmap vulnerability scan failed: \(error)")
+        }
+    }
+    
+    // MARK: - Nmap Path Detection
+    
+    private func findNmapPath() -> String {
+        let possiblePaths = [
+            "/usr/local/bin/nmap",
+            "/opt/homebrew/bin/nmap", 
+            "/usr/bin/nmap",
+            "/opt/local/bin/nmap"
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        
+        // Try to find via which command
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+            process.arguments = ["nmap"]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            
+            try process.run()
+            process.waitUntilExit()
+            
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !path.isEmpty {
+                    return path
+                }
+            }
+        } catch {
+            print("❌ Could not locate nmap: \(error)")
+        }
+        
+        return ""
+    }
+    
+    // MARK: - Nmap Results Parsing
+    
+    private func parseNmapResults(target: String, xmlOutput: String) async {
+        print("🔍 Parsing nmap results for target: \(target)")
+        
+        // Parse XML output from nmap
+        guard let xmlData = xmlOutput.data(using: .utf8) else { 
+            print("❌ Failed to convert XML output to data")
+            return 
+        }
+        
+        print("📊 XML data size: \(xmlData.count) bytes")
+        
+        let parser = XMLParser(data: xmlData)
+        let nmapParser = NmapXMLParser()
+        parser.delegate = nmapParser
+        
+        if parser.parse() {
+            let scanResult = nmapParser.results
+            print("✅ XML parsed successfully")
+            print("📊 Found \(scanResult.openPorts.count) open ports")
+            
+            await MainActor.run {
+                // Create Target object with real scan results
+                var newTarget = Target(
+                    name: scanResult.hostname.isEmpty ? target : scanResult.hostname,
+                    ipAddress: target
+                )
+                
+                print("🎯 Creating target: \(newTarget.name) (\(newTarget.ipAddress))")
+                
+                // Add discovered vulnerabilities
+                for port in scanResult.openPorts {
+                    let vuln = Vulnerability(
+                        cveId: nil,
+                        title: "Open Port \(port.number)",
+                        description: "Service \(port.service) running on port \(port.number)",
+                        severity: port.isHighRisk ? .high : .medium,
+                        port: port.number,
+                        service: port.service,
+                        discoveredAt: Date()
+                    )
+                    newTarget.vulnerabilities.append(vuln)
+                    print("📍 Added vulnerability: \(vuln.title)")
+                }
+                
+                // Update or add target
+                if let existingIndex = targets.firstIndex(where: { $0.ipAddress == target }) {
+                    targets[existingIndex] = newTarget
+                    print("✅ Updated existing target with \(newTarget.vulnerabilities.count) vulnerabilities")
+                } else {
+                    targets.append(newTarget)
+                    print("✅ Added new target with \(newTarget.vulnerabilities.count) vulnerabilities")
+                }
+            }
+        } else {
+            print("❌ Failed to parse XML")
+            if let error = parser.parserError {
+                print("❌ Parser error: \(error.localizedDescription)")
+            }
+            
+            // Let's also check if the output contains any useful text even if XML parsing failed
+            if xmlOutput.contains("open") || xmlOutput.contains("filtered") {
+                print("⚠️ Output contains scan results but XML parsing failed")
+                print("🔍 Raw output: \(xmlOutput)")
+            }
+        }
+    }
+    
+    private func parseNmapServiceResults(target: String, xmlOutput: String) async {
+        // Similar parsing for service detection results
+        await parseNmapResults(target: target, xmlOutput: xmlOutput)
+    }
+    
+    private func parseNmapVulnerabilityResults(target: String, xmlOutput: String) async {
+        // Parse vulnerability script results and add to existing target
+        await parseNmapResults(target: target, xmlOutput: xmlOutput)
     }
     
     // Web Scan Methods
@@ -267,10 +730,60 @@ class AppState {
         webScanProgress = 0.0
         webScanResults.removeAll()
         
+        // Create AttackVector for web scanning and show execution dialog
+        let webToolRequirements = selectedTools.map { tool in
+            ToolRequirement(name: tool.lowercased().replacingOccurrences(of: " ", with: ""), type: .tool, description: tool)
+        }
+        
+        let attackVector = AttackVector(
+            name: "Web Security Scan",
+            description: "Comprehensive web application security testing using multiple tools",
+            severity: .medium,
+            requirements: webToolRequirements,
+            commands: generateWebScanCommands(targetURL: targetURL, tools: selectedTools),
+            references: ["https://owasp.org/", "https://sqlmap.org/", "https://github.com/projectdiscovery/nuclei"]
+        )
+        
+        // Show AttackExecutionView popup
+        presentExecutionDialog(attackVector: attackVector, target: targetURL, port: 80)
+        
         // Execute real web vulnerability tests
         Task {
             await executeRealWebScanning(targetURL: targetURL, selectedTools: selectedTools)
         }
+    }
+    
+    private func generateWebScanCommands(targetURL: String, tools: [String]) -> [String] {
+        var commands: [String] = []
+        
+        for tool in tools {
+            switch tool {
+            case "SQL Injection":
+                commands.append("sqlmap -u \"\(targetURL)\" --batch --random-agent")
+                commands.append("sudo sqlmap -u \"\(targetURL)\" --batch --random-agent --level=5 --risk=3")
+            case "Web Vulnerability Scan":
+                commands.append("nikto -h \(targetURL)")
+                commands.append("nikto -h \(targetURL) -ssl")
+            case "Nuclei Template Scan":
+                commands.append("nuclei -target \(targetURL)")
+                commands.append("nuclei -target \(targetURL) -severity critical,high,medium")
+            case "Directory Enumeration":
+                commands.append("gobuster dir -u \(targetURL) -w /usr/share/wordlists/dirb/common.txt")
+                commands.append("sudo gobuster dir -u \(targetURL) -w /usr/share/wordlists/dirb/big.txt")
+            case "Advanced Directory Fuzzing":
+                commands.append("feroxbuster -u \(targetURL)")
+                commands.append("ffuf -u \(targetURL)/FUZZ -w /usr/share/wordlists/dirb/common.txt")
+            case "HTTP/HTTPS Analysis":
+                commands.append("httpx -target \(targetURL) -tech-detect -status-code")
+            case "SSL/TLS Analysis":
+                commands.append("testssl.sh \(targetURL)")
+                commands.append("sslscan \(targetURL)")
+            default:
+                commands.append("# \(tool) - tool specific command")
+            }
+        }
+        
+        return commands
     }
     
     func stopWebScan() {
@@ -561,57 +1074,40 @@ class AppState {
     }
     
     private func extractAndNotifyCredentials(from detail: String, target: String, port: Int, source: String) {
-        // Common credential patterns
-        let patterns = [
-            // username:password format
-            #"(\w+):(\w+)"#,
-            // admin/password format  
-            #"(\w+)/(\w+)"#,
-            // user="admin" pass="password" format
-            #"user[=\"']([^\"']+)[\"'].*pass[=\"']([^\"']+)[\"']"#,
-            // Default credentials mentions
-            #"default.*(\w+).*(\w+)"#
-        ]
+        // Use the enhanced credential extractor for comprehensive extraction
+        let extractor = EnhancedCredentialExtractor.shared
+        let discoveries = extractor.extractCredentials(
+            from: detail,
+            source: source,
+            target: target,
+            port: port
+        )
         
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-                let matches = regex.matches(in: detail, options: [], range: NSRange(detail.startIndex..., in: detail))
-                
-                for match in matches {
-                    guard match.numberOfRanges >= 3 else { continue }
-                    
-                    let usernameRange = Range(match.range(at: 1), in: detail)
-                    let passwordRange = Range(match.range(at: 2), in: detail)
-                    
-                    if let usernameRange = usernameRange, let passwordRange = passwordRange {
-                        let username = String(detail[usernameRange])
-                        let password = String(detail[passwordRange])
-                        
-                        // Filter out obviously false positives
-                        guard !username.isEmpty && !password.isEmpty &&
-                              username.count > 2 && password.count > 2 &&
-                              username != password else { continue }
-                        
-                        let credentialDiscovery = CredentialDiscovery(
-                            username: username,
-                            password: password,
-                            service: "Web",
-                            target: target,
-                            port: port,
-                            source: "web_scanner_\(source.lowercased())",
-                            confidence: determineCredentialConfidence(username: username, password: password, context: detail),
-                            timestamp: Date()
-                        )
-                        
-                        NotificationCenter.default.post(
-                            name: .credentialsDiscovered,
-                            object: credentialDiscovery
-                        )
-                        
-                        print("🔐 Integration: Discovered credentials \(username):\(password) from \(source)")
-                    }
+        // Process each discovered credential
+        for discovery in discoveries {
+            // Additional validation using confidence level
+            guard discovery.confidence != .low || 
+                  (discovery.confidence == .low && detail.lowercased().contains("hardcoded")) else {
+                continue
+            }
+            
+            // Send to integration engine
+            NotificationCenter.default.post(
+                name: .credentialsDiscovered,
+                object: discovery
+            )
+            
+            // Store in secure vault
+            Task {
+                do {
+                    try await secureCredentialVault.addCredential(from: discovery)
+                    print("🔐 Secure Storage: Encrypted credential for \(discovery.target):\(discovery.port)")
+                } catch {
+                    print("🔐 Storage Error: Failed to store credential - \(error)")
                 }
             }
+            
+            print("🔐 Integration: Discovered \(discovery.confidence.rawValue) confidence credentials from \(source)")
         }
     }
     
@@ -758,22 +1254,22 @@ class AppState {
     
     private func executeHTTPHeaderTest(targetURL: String) async -> WebScanResult? {
         // Add console output for transparency
-        await updateVerboseOutput("🔍 Starting HTTP Header Security Analysis...")
-        await updateVerboseOutput("Target: \(targetURL)")
-        await updateVerboseOutput("")
+        updateVerboseOutput("🔍 Starting HTTP Header Security Analysis...")
+        updateVerboseOutput("Target: \(targetURL)")
+        updateVerboseOutput("")
         
         let headers = await getHTTPHeaders(targetURL: targetURL)
         
         // Show discovered headers in console
-        await updateVerboseOutput("📋 Discovered HTTP Headers:")
+        updateVerboseOutput("📋 Discovered HTTP Headers:")
         if headers.isEmpty {
-            await updateVerboseOutput("  ⚠️ No headers could be retrieved")
+            updateVerboseOutput("  ⚠️ No headers could be retrieved")
         } else {
             for header in headers.sorted() {
-                await updateVerboseOutput("  • \(header)")
+                updateVerboseOutput("  • \(header)")
             }
         }
-        await updateVerboseOutput("")
+        updateVerboseOutput("")
         
         let requiredHeaders = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"]
         let missingHeaders = requiredHeaders.filter { requiredHeader in
@@ -781,20 +1277,20 @@ class AppState {
         }
         
         // Show security analysis in console
-        await updateVerboseOutput("🔐 Security Header Analysis:")
+        updateVerboseOutput("🔐 Security Header Analysis:")
         for header in requiredHeaders {
             let isPresent = headers.contains { $0.lowercased().contains(header.lowercased()) }
             let status = isPresent ? "✅ Present" : "❌ Missing"
-            await updateVerboseOutput("  \(status): \(header)")
+            updateVerboseOutput("  \(status): \(header)")
         }
-        await updateVerboseOutput("")
+        updateVerboseOutput("")
         
         if !missingHeaders.isEmpty {
-            await updateVerboseOutput("⚠️ Security Issues Found:")
+            updateVerboseOutput("⚠️ Security Issues Found:")
             for header in missingHeaders {
-                await updateVerboseOutput("  • Missing: \(header)")
+                updateVerboseOutput("  • Missing: \(header)")
             }
-            await updateVerboseOutput("💡 Recommendation: Add missing security headers to improve protection")
+            updateVerboseOutput("💡 Recommendation: Add missing security headers to improve protection")
             
             return WebScanResult(
                 type: "HTTP Header Security",
@@ -805,8 +1301,8 @@ class AppState {
                 timestamp: Date()
             )
         } else {
-            await updateVerboseOutput("✅ All required security headers are present")
-            await updateVerboseOutput("🛡️ Website has good header security configuration")
+            updateVerboseOutput("✅ All required security headers are present")
+            updateVerboseOutput("🛡️ Website has good header security configuration")
             
             return WebScanResult(
                 type: "HTTP Header Security",
@@ -821,18 +1317,18 @@ class AppState {
     
     private func executeSSLTest(targetURL: String) async -> WebScanResult? {
         // Add console output for transparency
-        await updateVerboseOutput("🔒 Starting Basic SSL/TLS Security Check...")
-        await updateVerboseOutput("Target: \(targetURL)")
-        await updateVerboseOutput("")
+        updateVerboseOutput("🔒 Starting Basic SSL/TLS Security Check...")
+        updateVerboseOutput("Target: \(targetURL)")
+        updateVerboseOutput("")
         
         if !targetURL.hasPrefix("https://") {
-            await updateVerboseOutput("⚠️ Protocol Analysis:")
-            await updateVerboseOutput("  • Protocol: HTTP (insecure)")
-            await updateVerboseOutput("  • Encryption: None")
-            await updateVerboseOutput("  • Data Protection: Plaintext transmission")
-            await updateVerboseOutput("")
-            await updateVerboseOutput("❌ CRITICAL: Website not using HTTPS encryption")
-            await updateVerboseOutput("💡 Recommendation: Implement SSL/TLS certificate and redirect HTTP to HTTPS")
+            updateVerboseOutput("⚠️ Protocol Analysis:")
+            updateVerboseOutput("  • Protocol: HTTP (insecure)")
+            updateVerboseOutput("  • Encryption: None")
+            updateVerboseOutput("  • Data Protection: Plaintext transmission")
+            updateVerboseOutput("")
+            updateVerboseOutput("❌ CRITICAL: Website not using HTTPS encryption")
+            updateVerboseOutput("💡 Recommendation: Implement SSL/TLS certificate and redirect HTTP to HTTPS")
             
             return WebScanResult(
                 type: "SSL/TLS Configuration",
@@ -846,20 +1342,20 @@ class AppState {
         
         // Basic SSL check
         guard let url = URL(string: targetURL) else { 
-            await updateVerboseOutput("❌ Invalid URL format for SSL testing")
+            updateVerboseOutput("❌ Invalid URL format for SSL testing")
             return nil 
         }
         
-        await updateVerboseOutput("🔍 Attempting HTTPS connection...")
+        updateVerboseOutput("🔍 Attempting HTTPS connection...")
         
         do {
             let (_, response) = try await URLSession.shared.data(from: url)
             if let httpResponse = response as? HTTPURLResponse {
-                await updateVerboseOutput("✅ SSL/TLS Connection Analysis:")
-                await updateVerboseOutput("  • HTTPS Connection: Successful")
-                await updateVerboseOutput("  • Status Code: \(httpResponse.statusCode)")
-                await updateVerboseOutput("  • SSL Certificate: Valid (basic check)")
-                await updateVerboseOutput("  • Protocol: HTTPS")
+                updateVerboseOutput("✅ SSL/TLS Connection Analysis:")
+                updateVerboseOutput("  • HTTPS Connection: Successful")
+                updateVerboseOutput("  • Status Code: \(httpResponse.statusCode)")
+                updateVerboseOutput("  • SSL Certificate: Valid (basic check)")
+                updateVerboseOutput("  • Protocol: HTTPS")
                 
                 // Check for security headers
                 let securityHeaders = httpResponse.allHeaderFields.keys.compactMap { $0 as? String }
@@ -871,14 +1367,14 @@ class AppState {
                     }
                 
                 if !securityHeaders.isEmpty {
-                    await updateVerboseOutput("  • Security Headers: Present (\(securityHeaders.count) found)")
+                    updateVerboseOutput("  • Security Headers: Present (\(securityHeaders.count) found)")
                 } else {
-                    await updateVerboseOutput("  • Security Headers: Missing or limited")
+                    updateVerboseOutput("  • Security Headers: Missing or limited")
                 }
                 
-                await updateVerboseOutput("")
-                await updateVerboseOutput("✅ Basic SSL check passed - connection secured")
-                await updateVerboseOutput("💡 Note: For comprehensive SSL analysis, use TestSSL.sh tool")
+                updateVerboseOutput("")
+                updateVerboseOutput("✅ Basic SSL check passed - connection secured")
+                updateVerboseOutput("💡 Note: For comprehensive SSL analysis, use TestSSL.sh tool")
                 
                 return WebScanResult(
                     type: "SSL/TLS Configuration",
@@ -890,15 +1386,15 @@ class AppState {
                 )
             }
         } catch {
-            await updateVerboseOutput("❌ SSL/TLS Connection Failed:")
-            await updateVerboseOutput("  • Error: \(error.localizedDescription)")
-            await updateVerboseOutput("  • Possible causes:")
-            await updateVerboseOutput("    - Invalid SSL certificate")
-            await updateVerboseOutput("    - Expired certificate")
-            await updateVerboseOutput("    - Self-signed certificate")
-            await updateVerboseOutput("    - Network connectivity issues")
-            await updateVerboseOutput("")
-            await updateVerboseOutput("💡 Recommendation: Check certificate validity and configuration")
+            updateVerboseOutput("❌ SSL/TLS Connection Failed:")
+            updateVerboseOutput("  • Error: \(error.localizedDescription)")
+            updateVerboseOutput("  • Possible causes:")
+            updateVerboseOutput("    - Invalid SSL certificate")
+            updateVerboseOutput("    - Expired certificate")
+            updateVerboseOutput("    - Self-signed certificate")
+            updateVerboseOutput("    - Network connectivity issues")
+            updateVerboseOutput("")
+            updateVerboseOutput("💡 Recommendation: Check certificate validity and configuration")
             
             return WebScanResult(
                 type: "SSL/TLS Configuration",
@@ -924,10 +1420,11 @@ class AppState {
         process.standardOutput = pipe
         process.standardError = pipe
         
-        // Check if SQLMap is installed
-        guard let sqlmapPath = findWebToolPath("sqlmap") else {
-            output.append("❌ SQLMap not found. Install with: brew install sqlmap")
-            await updateVerboseOutput("❌ SQLMap not found. Install with: brew install sqlmap")
+        // Check if SQLMap is installed using ToolManager
+        guard let sqlmapPath = ToolManager.shared.findToolPath("sqlmap") else {
+            let installCmd = ToolManager.shared.getInstallCommand(for: "sqlmap")
+            output.append("❌ SQLMap not found. Install with: \(installCmd)")
+            updateVerboseOutput("❌ SQLMap not found. Install with: \(installCmd)")
             return (output, vulnerabilities)
         }
         
@@ -947,20 +1444,7 @@ class AppState {
         environment["PATH"] = newPath
         
         // Determine the best way to execute SQLMap
-        let pythonPaths = [
-            "/opt/homebrew/opt/python@3.13/bin/python3.13",
-            "/opt/homebrew/bin/python3",
-            "/usr/local/bin/python3",
-            "/usr/bin/python3"
-        ]
-        
-        var pythonPath: String? = nil
-        for path in pythonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                pythonPath = path
-                break
-            }
-        }
+        let pythonPath = ToolManager.shared.getPython3Path()
         
         if let pythonPath = pythonPath {
             // Run with explicit Python interpreter for better compatibility
@@ -993,35 +1477,28 @@ class AppState {
         let commandDescription = pythonPath != nil ? 
             "\(pythonPath!) \(sqlmapPath) -u \(targetURL) --batch --level=1 --risk=1 --timeout=30 --retries=1" :
             "\(sqlmapPath) -u \(targetURL) --batch --level=1 --risk=1 --timeout=30 --retries=1"
-        await updateVerboseOutput("🔧 SQLMap Command: \(commandDescription)")
-        await updateVerboseOutput("🚀 Starting SQLMap SQL injection detection...")
-        await updateVerboseOutput("📍 Target: \(targetURL)")
-        await updateVerboseOutput("⚙️ Parameters: Level=1, Risk=1, Timeout=30s")
+        updateVerboseOutput("🔧 SQLMap Command: \(commandDescription)")
+        updateVerboseOutput("🚀 Starting SQLMap SQL injection detection...")
+        updateVerboseOutput("📍 Target: \(targetURL)")
+        updateVerboseOutput("⚙️ Parameters: Level=1, Risk=1, Timeout=30s")
         
         output.append("🚀 Starting SQLMap scan...")
         output.append("Target: \(targetURL)")
         
         do {
+            // Start output batching for performance
+            startOutputBatching()
+            defer { stopOutputBatching() }
+            
             try process.run()
-            await updateVerboseOutput("$ \(commandDescription)")
-            await updateVerboseOutput("")
+            updateVerboseOutput("$ \(commandDescription)")
+            updateVerboseOutput("")
             
-            // Set a timeout for the process (5 minutes)
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
-                if process.isRunning {
-                    process.terminate()
-                    await updateVerboseOutput("⏰ SQLMap scan timed out after 5 minutes")
-                }
-            }
-            
-            defer {
-                timeoutTask.cancel()
-            }
-            
-            // Stream real-time output using async approach
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
+            // Run with timeout
+            try await withTimeout(seconds: 300) { // 5 minute timeout
+                // Stream real-time output using async approach
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask {
                     let fileHandle = pipe.fileHandleForReading
                     var buffer = ""
                     
@@ -1039,9 +1516,9 @@ class AppState {
                                 for line in completeLines {
                                     let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmedLine.isEmpty {
-                                        await MainActor.run {
+                                        _ = await MainActor.run {
                                             Task {
-                                                await self.updateVerboseOutput(trimmedLine)
+                                                self.updateVerboseOutput(trimmedLine)
                                             }
                                         }
                                         output.append(trimmedLine)
@@ -1072,9 +1549,9 @@ class AppState {
                             for line in finalLines {
                                 let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !trimmedLine.isEmpty {
-                                    await MainActor.run {
+                                    _ = await MainActor.run {
                                         Task {
-                                            await self.updateVerboseOutput(trimmedLine)
+                                            self.updateVerboseOutput(trimmedLine)
                                         }
                                     }
                                     output.append(trimmedLine)
@@ -1090,17 +1567,24 @@ class AppState {
                         }
                     }
                 }
+                }
+                
+                // Wait for process to complete
+                process.waitUntilExit()
             }
             
-            // Wait for process to complete
-            process.waitUntilExit()
-            
-            await updateVerboseOutput("")
-            await updateVerboseOutput("SQLMap scan completed with exit code: \(process.terminationStatus)")
+            updateVerboseOutput("")
+            updateVerboseOutput("SQLMap scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ SQLMap scan completed")
             
+        } catch is TimeoutError {
+            process.terminate()
+            updateVerboseOutput("⏰ SQLMap scan timed out after 5 minutes")
+            output.append("⏰ Scan timed out after 5 minutes")
         } catch {
+            process.terminate()
             output.append("❌ Error executing SQLMap: \(error.localizedDescription)")
+            updateVerboseOutput("❌ Error: \(error.localizedDescription)")
         }
         
         return (output, vulnerabilities)
@@ -1117,9 +1601,10 @@ class AppState {
         process.standardError = pipe
         
         // Check if Nikto is installed
-        guard let niktoPath = findWebToolPath("nikto") else {
-            output.append("❌ Nikto not found. Install with: brew install nikto")
-            await updateVerboseOutput("❌ Nikto not found. Install with: brew install nikto")
+        guard let niktoPath = ToolManager.shared.findToolPath("nikto") else {
+            let installCmd = ToolManager.shared.getInstallCommand(for: "nikto")
+            output.append("❌ Nikto not found. Install with: \(installCmd)")
+            updateVerboseOutput("❌ Nikto not found. Install with: \(installCmd)")
             return (output, vulnerabilities)
         }
         
@@ -1135,31 +1620,25 @@ class AppState {
         process.arguments = commandArgs
         
         // Update verbose output with command details
-        await updateVerboseOutput("🔧 Nikto Command: \(niktoPath) \(commandArgs.joined(separator: " "))")
-        await updateVerboseOutput("🚀 Starting Nikto web vulnerability scan...")
-        await updateVerboseOutput("📍 Target: \(targetURL)")
-        await updateVerboseOutput("⚙️ Parameters: All checks, 30s timeout, 5min max time")
+        updateVerboseOutput("🔧 Nikto Command: \(niktoPath) \(commandArgs.joined(separator: " "))")
+        updateVerboseOutput("🚀 Starting Nikto web vulnerability scan...")
+        updateVerboseOutput("📍 Target: \(targetURL)")
+        updateVerboseOutput("⚙️ Parameters: All checks, 30s timeout, 5min max time")
         
         output.append("🚀 Starting Nikto scan...")
         output.append("Target: \(targetURL)")
         
         do {
+            // Start output batching
+            startOutputBatching()
+            defer { stopOutputBatching() }
+            
             try process.run()
-            await updateVerboseOutput("$ \(niktoPath) \(commandArgs.joined(separator: " "))")
-            await updateVerboseOutput("")
+            updateVerboseOutput("$ \(niktoPath) \(commandArgs.joined(separator: " "))")
+            updateVerboseOutput("")
             
-            // Set a timeout for the process (5 minutes)
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
-                if process.isRunning {
-                    process.terminate()
-                    await updateVerboseOutput("⏰ Nikto scan timed out after 5 minutes")
-                }
-            }
-            
-            defer {
-                timeoutTask.cancel()
-            }
+            // Run with timeout
+            try await withTimeout(seconds: 300) { // 5 minute timeout
             
             // Stream real-time output using async approach
             await withTaskGroup(of: Void.self) { group in
@@ -1181,9 +1660,9 @@ class AppState {
                                 for line in completeLines {
                                     let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmedLine.isEmpty {
-                                        await MainActor.run {
+                                        _ = await MainActor.run {
                                             Task {
-                                                await self.updateVerboseOutput(trimmedLine)
+                                                self.updateVerboseOutput(trimmedLine)
                                             }
                                         }
                                         output.append(trimmedLine)
@@ -1219,9 +1698,9 @@ class AppState {
                             for line in finalLines {
                                 let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !trimmedLine.isEmpty {
-                                    await MainActor.run {
+                                    _ = await MainActor.run {
                                         Task {
-                                            await self.updateVerboseOutput(trimmedLine)
+                                            self.updateVerboseOutput(trimmedLine)
                                         }
                                     }
                                     output.append(trimmedLine)
@@ -1242,17 +1721,24 @@ class AppState {
                         }
                     }
                 }
+                }
+                
+                // Wait for process to complete
+                process.waitUntilExit()
             }
             
-            // Wait for process to complete
-            process.waitUntilExit()
-            
-            await updateVerboseOutput("")
-            await updateVerboseOutput("Nikto scan completed with exit code: \(process.terminationStatus)")
+            updateVerboseOutput("")
+            updateVerboseOutput("Nikto scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ Nikto scan completed")
             
+        } catch is TimeoutError {
+            process.terminate()
+            updateVerboseOutput("⏰ Nikto scan timed out after 5 minutes")
+            output.append("⏰ Scan timed out after 5 minutes")
         } catch {
+            process.terminate()
             output.append("❌ Error executing Nikto: \(error.localizedDescription)")
+            updateVerboseOutput("❌ Error: \(error.localizedDescription)")
         }
         
         return (output, vulnerabilities)
@@ -1263,14 +1749,17 @@ class AppState {
         let files: [String] = []
         
         // Try gobuster first, then dirb as fallback
-        if let gobusterPath = findWebToolPath("gobuster") {
+        if let gobusterPath = ToolManager.shared.findToolPath("gobuster") {
             let result = await executeGobusterWeb(targetURL: targetURL, toolPath: gobusterPath)
             return (result.output, result.files, result.success)
-        } else if let dirbPath = findWebToolPath("dirb") {
+        } else if let dirbPath = ToolManager.shared.findToolPath("dirb") {
             let result = await executeDirbWeb(targetURL: targetURL, toolPath: dirbPath)
             return (result.output, result.files, result.success)
         } else {
-            output.append("❌ No directory enumeration tools found. Install with: brew install gobuster dirb")
+            let gobusterCmd = ToolManager.shared.getInstallCommand(for: "gobuster")
+            let dirbCmd = ToolManager.shared.getInstallCommand(for: "dirb")
+            output.append("❌ No directory enumeration tools found.")
+            output.append("Install with: \(gobusterCmd) or \(dirbCmd)")
             return (output, files, false)
         }
     }
@@ -1301,22 +1790,16 @@ class AppState {
         output.append("Target: \(targetURL)")
         
         do {
+            // Start output batching
+            startOutputBatching()
+            defer { stopOutputBatching() }
+            
             try process.run()
-            await updateVerboseOutput("$ \(toolPath) \(process.arguments?.joined(separator: " ") ?? "")")
-            await updateVerboseOutput("")
+            updateVerboseOutput("$ \(toolPath) \(process.arguments?.joined(separator: " ") ?? "")")
+            updateVerboseOutput("")
             
-            // Set a timeout
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
-                if process.isRunning {
-                    process.terminate()
-                    await updateVerboseOutput("⏰ Gobuster scan timed out after 5 minutes")
-                }
-            }
-            
-            defer {
-                timeoutTask.cancel()
-            }
+            // Run with timeout
+            try await withTimeout(seconds: 300) { // 5 minute timeout
             
             // Stream real-time output using async approach
             await withTaskGroup(of: Void.self) { group in
@@ -1338,9 +1821,9 @@ class AppState {
                                 for line in completeLines {
                                     let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmedLine.isEmpty {
-                                        await MainActor.run {
+                                        _ = await MainActor.run {
                                             Task {
-                                                await self.updateVerboseOutput(trimmedLine)
+                                                self.updateVerboseOutput(trimmedLine)
                                             }
                                         }
                                         output.append(trimmedLine)
@@ -1374,9 +1857,9 @@ class AppState {
                             for line in finalLines {
                                 let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !trimmedLine.isEmpty {
-                                    await MainActor.run {
+                                    _ = await MainActor.run {
                                         Task {
-                                            await self.updateVerboseOutput(trimmedLine)
+                                            self.updateVerboseOutput(trimmedLine)
                                         }
                                     }
                                     output.append(trimmedLine)
@@ -1394,19 +1877,27 @@ class AppState {
                         }
                     }
                 }
+                }
+                
+                // Wait for process to complete
+                process.waitUntilExit()
             }
             
-            // Wait for process to complete
-            process.waitUntilExit()
-            
-            await updateVerboseOutput("")
-            await updateVerboseOutput("Gobuster scan completed with exit code: \(process.terminationStatus)")
+            updateVerboseOutput("")
+            updateVerboseOutput("Gobuster scan completed with exit code: \(process.terminationStatus)")
             output.append("✅ Gobuster scan completed")
             
             return (output, files, true)
             
+        } catch is TimeoutError {
+            process.terminate()
+            updateVerboseOutput("⏰ Gobuster scan timed out after 5 minutes")
+            output.append("⏰ Scan timed out after 5 minutes")
+            return (output, files, false)
         } catch {
+            process.terminate()
             output.append("❌ Error executing Gobuster: \(error.localizedDescription)")
+            updateVerboseOutput("❌ Error: \(error.localizedDescription)")
             return (output, files, false)
         }
     }
@@ -1481,47 +1972,6 @@ class AppState {
         return []
     }
     
-    private func findWebToolPath(_ toolName: String) -> String? {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        let commonPaths = [
-            "/usr/local/bin/\(toolName)",
-            "/opt/homebrew/bin/\(toolName)",
-            "/usr/bin/\(toolName)",
-            "/bin/\(toolName)",
-            "\(homeDir)/go/bin/\(toolName)",
-            "\(homeDir)/.cargo/bin/\(toolName)",
-            "\(homeDir)/.local/bin/\(toolName)"
-        ]
-        
-        for path in commonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                return path
-            }
-        }
-        
-        // Try using 'which' command
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = [toolName]
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !path.isEmpty {
-                return path
-            }
-        } catch {
-            // Ignore error, tool not found
-        }
-        
-        return nil
-    }
     
     private func createWebWordlist() -> String {
         let tempDir = FileManager.default.temporaryDirectory
@@ -1727,8 +2177,9 @@ class AppState {
         process.standardOutput = pipe
         process.standardError = pipe
         
-        guard let nucleiPath = findWebToolPath("nuclei") else {
-            output.append("❌ Nuclei not found. Install with: go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest")
+        guard let nucleiPath = ToolManager.shared.findToolPath("nuclei") else {
+            let installCmd = ToolManager.shared.getInstallCommand(for: "nuclei")
+            output.append("❌ Nuclei not found. Install with: \(installCmd)")
             return (output, vulnerabilities)
         }
         
@@ -1803,8 +2254,9 @@ class AppState {
         process.standardOutput = pipe
         process.standardError = pipe
         
-        guard let feroxPath = findWebToolPath("feroxbuster") else {
-            output.append("❌ Feroxbuster not found. Install with: cargo install feroxbuster")
+        guard let feroxPath = ToolManager.shared.findToolPath("feroxbuster") else {
+            let installCmd = ToolManager.shared.getInstallCommand(for: "feroxbuster")
+            output.append("❌ Feroxbuster not found. Install with: \(installCmd)")
             return (output, files, false)
         }
         
@@ -1955,7 +2407,7 @@ class AppState {
                 "-t", targetURL,
                 "-J", "zap-report.json"  // JSON output
             ]
-        } else if let zapPath = findWebToolPath("zap.sh") {
+        } else if let zapPath = ToolManager.shared.findToolPath("zap.sh") {
             // Use native installation
             process.executableURL = URL(fileURLWithPath: zapPath)
             process.arguments = [
@@ -2018,8 +2470,9 @@ class AppState {
         process.standardOutput = pipe
         process.standardError = pipe
         
-        guard let httpxPath = findWebToolPath("httpx") else {
-            output.append("❌ HTTPx not found. Install with: go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest")
+        guard let httpxPath = ToolManager.shared.findToolPath("httpx") else {
+            let installCmd = ToolManager.shared.getInstallCommand(for: "httpx")
+            output.append("❌ HTTPx not found. Install with: \(installCmd)")
             return (output, technologies, statusIssues)
         }
         
@@ -2087,9 +2540,9 @@ class AppState {
         var vulnerabilities: [String] = []
         
         // Add console output for transparency
-        await updateVerboseOutput("🔍 Starting TestSSL.sh Comprehensive Analysis...")
-        await updateVerboseOutput("Target: \(targetURL)")
-        await updateVerboseOutput("")
+        updateVerboseOutput("🔍 Starting TestSSL.sh Comprehensive Analysis...")
+        updateVerboseOutput("Target: \(targetURL)")
+        updateVerboseOutput("")
         
         let process = Process()
         let pipe = Pipe()
@@ -2097,24 +2550,8 @@ class AppState {
         process.standardOutput = pipe
         process.standardError = pipe
         
-        // Check multiple possible TestSSL.sh locations
-        let possiblePaths = [
-            "/opt/testssl/testssl.sh",
-            "/usr/local/bin/testssl.sh",
-            "/opt/homebrew/bin/testssl.sh",
-            "./testssl.sh",
-            "/usr/share/testssl/testssl.sh"
-        ]
-        
-        var testSSLPath: String?
-        for path in possiblePaths {
-            if FileManager.default.fileExists(atPath: path) {
-                testSSLPath = path
-                break
-            }
-        }
-        
-        guard let finalTestSSLPath = testSSLPath else {
+        // Check for TestSSL.sh using ToolManager
+        guard let finalTestSSLPath = ToolManager.shared.findToolPath("testssl.sh") ?? ToolManager.shared.findToolPath("testssl") else {
             let errorMsg = "❌ TestSSL.sh not found in any common location"
             let installMsg = "💡 Install with: git clone https://github.com/drwetter/testssl.sh.git /opt/testssl"
             let altInstallMsg = "Or: brew install testssl"
@@ -2123,20 +2560,15 @@ class AppState {
             output.append(installMsg)
             output.append(altInstallMsg)
             
-            await updateVerboseOutput(errorMsg)
-            await updateVerboseOutput("")
-            await updateVerboseOutput("Checked locations:")
-            for path in possiblePaths {
-                await updateVerboseOutput("  • \(path) - Not found")
-            }
-            await updateVerboseOutput("")
-            await updateVerboseOutput(installMsg)
-            await updateVerboseOutput(altInstallMsg)
+            updateVerboseOutput(errorMsg)
+            updateVerboseOutput("")
+            updateVerboseOutput(installMsg)
+            updateVerboseOutput(altInstallMsg)
             
             return (output, vulnerabilities)
         }
         
-        await updateVerboseOutput("✅ TestSSL.sh found at: \(finalTestSSLPath)")
+        updateVerboseOutput("✅ TestSSL.sh found at: \(finalTestSSLPath)")
         
         // Extract host from URL
         guard let url = URL(string: targetURL), let host = url.host else {
@@ -2155,12 +2587,12 @@ class AppState {
         output.append("🚀 Starting TestSSL.sh comprehensive SSL/TLS analysis...")
         output.append("Target: \(host)")
         
-        await updateVerboseOutput("🚀 Executing TestSSL.sh with parameters:")
-        await updateVerboseOutput("  • Target: \(host)")
-        await updateVerboseOutput("  • Mode: Fast scan")
-        await updateVerboseOutput("  • Output: Quiet mode")
-        await updateVerboseOutput("  • Timeout: 10 minutes")
-        await updateVerboseOutput("")
+        updateVerboseOutput("🚀 Executing TestSSL.sh with parameters:")
+        updateVerboseOutput("  • Target: \(host)")
+        updateVerboseOutput("  • Mode: Fast scan")
+        updateVerboseOutput("  • Output: Quiet mode")
+        updateVerboseOutput("  • Timeout: 10 minutes")
+        updateVerboseOutput("")
         
         do {
             try process.run()
@@ -2181,44 +2613,70 @@ class AppState {
                 output.append(contentsOf: filteredLines)
                 
                 // Show real-time output to user
-                await updateVerboseOutput("📋 TestSSL.sh Analysis Results:")
+                updateVerboseOutput("📋 TestSSL.sh Analysis Results:")
                 for line in filteredLines.prefix(20) { // Show first 20 lines
-                    await updateVerboseOutput(line)
+                    updateVerboseOutput(line)
                 }
                 if filteredLines.count > 20 {
-                    await updateVerboseOutput("... (\(filteredLines.count - 20) more lines)")
+                    updateVerboseOutput("... (\(filteredLines.count - 20) more lines)")
                 }
-                await updateVerboseOutput("")
+                updateVerboseOutput("")
                 
                 // Parse TestSSL output for vulnerabilities
-                await updateVerboseOutput("🔍 Analyzing for vulnerabilities...")
+                updateVerboseOutput("🔍 Analyzing for vulnerabilities...")
                 for line in lines {
                     let lowerLine = line.lowercased()
                     if (lowerLine.contains("vulnerable") || lowerLine.contains("weak") || lowerLine.contains("insecure")) &&
                        !lowerLine.contains("not vulnerable") {
                         vulnerabilities.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
-                        await updateVerboseOutput("⚠️ Found: \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
+                        updateVerboseOutput("⚠️ Found: \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
                     }
                 }
                 
                 if vulnerabilities.isEmpty {
-                    await updateVerboseOutput("✅ No significant vulnerabilities detected")
+                    updateVerboseOutput("✅ No significant vulnerabilities detected")
                 } else {
-                    await updateVerboseOutput("❌ Found \(vulnerabilities.count) potential SSL/TLS issues")
+                    updateVerboseOutput("❌ Found \(vulnerabilities.count) potential SSL/TLS issues")
                 }
             }
             
             process.waitUntilExit()
             timeoutTask.cancel()
             output.append("✅ TestSSL.sh analysis completed")
-            await updateVerboseOutput("✅ TestSSL.sh analysis completed successfully")
+            updateVerboseOutput("✅ TestSSL.sh analysis completed successfully")
             
         } catch {
             output.append("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
-            await updateVerboseOutput("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
+            updateVerboseOutput("❌ Error executing TestSSL.sh: \(error.localizedDescription)")
         }
         
         return (output, vulnerabilities)
+    }
+    
+    // MARK: - Performance Optimization
+    
+    private var outputBuffer: [String] = []
+    private var outputTimer: Timer?
+    private let outputBatchSize = 50
+    
+    func startOutputBatching() {
+        outputTimer?.invalidate()
+        outputTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, !self.outputBuffer.isEmpty else { return }
+                let batch = Array(self.outputBuffer.prefix(self.outputBatchSize))
+                self.currentToolOutput.append(contentsOf: batch)
+                self.outputBuffer.removeFirst(min(batch.count, self.outputBuffer.count))
+            }
+        }
+    }
+    
+    func stopOutputBatching() {
+        outputTimer?.invalidate()
+        outputTimer = nil
+        // Flush remaining buffer
+        currentToolOutput.append(contentsOf: outputBuffer)
+        outputBuffer.removeAll()
     }
     
     // MARK: - Timeout Helper

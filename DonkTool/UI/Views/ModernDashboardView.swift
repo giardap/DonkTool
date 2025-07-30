@@ -11,31 +11,38 @@ import Charts
 struct ModernDashboardView: View {
     @Environment(AppState.self) private var appState
     @State private var lastRefreshTime = Date()
+    @State private var showContent = false
     
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 24) {
                 // Header section
                 DashboardHeader()
+                    .fadeIn(delay: 0.1)
                 
                 // Key metrics grid
                 MetricsGrid()
+                    .slideIn(from: .bottom, delay: 0.2)
                 
                 // Charts and visualizations
                 ChartsSection()
+                    .fadeIn(delay: 0.3)
                 
                 // Recent activity and vulnerabilities
                 HStack(alignment: .top, spacing: 20) {
                     RecentActivityCard()
                         .frame(maxWidth: .infinity)
+                        .scaleIn(delay: 0.4)
                     
                     VulnerabilitiesCard()
                         .frame(maxWidth: .infinity)
+                        .scaleIn(delay: 0.5)
                 }
                 
                 // Active scans section
                 if appState.isNetworkScanning || appState.isWebScanning {
                     ActiveScansSection()
+                        .transition(.slideAndFade)
                 }
             }
             .padding(24)
@@ -48,6 +55,7 @@ struct ModernDashboardView: View {
                         await refreshDashboardData()
                     }
                 }
+                .buttonStyle(AnimatedButtonStyle())
                 .buttonStyle(.borderedProminent)
                 .disabled(appState.cveDatabase.isLoading)
             }
@@ -91,6 +99,7 @@ struct ModernDashboardView: View {
 
 struct DashboardHeader: View {
     @Environment(AppState.self) private var appState
+    @State private var isAnimating = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -116,9 +125,8 @@ struct DashboardHeader: View {
                 // Status indicator
                 HStack(spacing: 8) {
                     if appState.cveDatabase.isLoading {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 8, height: 8)
+                        LoadingDots(size: 6, color: .blue)
+                            .frame(height: 8)
                         
                         Text("Updating CVE Database...")
                             .font(.caption)
@@ -135,6 +143,7 @@ struct DashboardHeader: View {
                         Circle()
                             .fill(.green)
                             .frame(width: 8, height: 8)
+                            .pulse(duration: 2.0)
                         
                         Text("System Operational")
                             .font(.caption)
@@ -164,6 +173,7 @@ struct DashboardHeader: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(.quaternary, lineWidth: 1)
         )
+        .hoverEffect()
     }
 }
 
@@ -264,6 +274,7 @@ struct MetricCard: View {
     let trend: TrendDirection
     let color: Color
     let icon: String
+    @State private var isHovered = false
     
     enum TrendDirection {
         case up, down, neutral
@@ -322,6 +333,13 @@ struct MetricCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(.quaternary, lineWidth: 1)
         )
+        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .shadow(color: color.opacity(isHovered ? 0.2 : 0), radius: isHovered ? 8 : 0)
+        .onHover { hovering in
+            withAnimation(.smoothSpring) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
@@ -332,15 +350,18 @@ struct ChartsSection: View {
         HStack(alignment: .top, spacing: 20) {
             VulnerabilityDistributionChart()
                 .frame(maxWidth: .infinity)
+                .transition(.scaleAndFade)
             
             ScanActivityChart()
                 .frame(maxWidth: .infinity)
+                .transition(.scaleAndFade)
         }
     }
 }
 
 struct VulnerabilityDistributionChart: View {
     @Environment(AppState.self) private var appState
+    @State private var animateChart = false
     
     var vulnerabilityData: [ChartData] {
         let vulnerabilities = appState.getAllVulnerabilities()
@@ -629,7 +650,7 @@ struct VulnerabilitiesCard: View {
                 
                 VStack(spacing: 8) {
                     ForEach(recentVulnerabilities) { vulnerability in
-                        VulnerabilityRow(vulnerability: vulnerability)
+                        ModernVulnerabilityRow(vulnerability: vulnerability)
                     }
                 }
             }
@@ -655,7 +676,7 @@ struct VulnerabilitiesCard: View {
     }
 }
 
-struct VulnerabilityRow: View {
+struct ModernVulnerabilityRow: View {
     let vulnerability: Vulnerability
     
     var body: some View {

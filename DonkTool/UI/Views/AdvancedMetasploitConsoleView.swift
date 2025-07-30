@@ -180,7 +180,7 @@ struct AdvancedMetasploitConsoleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(msfConsole.sessions) { session in
-                    SessionRow(session: session, console: msfConsole)
+                    AdvancedSessionRow(session: session, console: msfConsole)
                 }
             }
         }
@@ -551,7 +551,7 @@ struct ModuleRow: View {
     }
 }
 
-struct SessionRow: View {
+struct AdvancedSessionRow: View {
     let session: MsfSession
     let console: MetasploitConsoleManager
     

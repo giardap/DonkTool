@@ -34,7 +34,7 @@ struct DashboardView: View {
         }
         .navigationTitle("Security Dashboard")
         .sheet(isPresented: $showingVulnerabilityDetails) {
-            VulnerabilityDetailsView(vulnerabilities: allVulnerabilities)
+            DashboardVulnerabilityDetailsView(vulnerabilities: allVulnerabilities)
         }
         .sheet(isPresented: $showingQuickScan) {
             QuickScanView()
@@ -609,7 +609,7 @@ enum AnyVulnerability {
 
 // MARK: - Placeholder Views
 
-struct VulnerabilityDetailsView: View {
+struct DashboardVulnerabilityDetailsView: View {
     let vulnerabilities: [AnyVulnerability]
     @Environment(\.dismiss) private var dismiss
     

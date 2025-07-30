@@ -1070,11 +1070,13 @@ struct ModernNetworkScannerView: View {
         }
     }
     
-    private func convertAttackVectorSeverity(_ severity: Vulnerability.Severity) -> NetworkAttackVector.Severity {
+    private func convertAttackVectorSeverity(_ severity: Vulnerability.Severity) -> WebScanResult.Severity {
         switch severity {
-        case .info, .low: return .low
+        case .info: return .informational
+        case .low: return .low
         case .medium: return .medium
-        case .high, .critical: return .high
+        case .high: return .high
+        case .critical: return .critical
         }
     }
     
@@ -1143,11 +1145,13 @@ struct ModernNetworkScannerView: View {
         }
     }
     
-    private func convertFromNetworkAttackVectorSeverity(_ severity: NetworkAttackVector.Severity) -> Vulnerability.Severity {
+    private func convertFromNetworkAttackVectorSeverity(_ severity: WebScanResult.Severity) -> Vulnerability.Severity {
         switch severity {
-        case .low: return .info
+        case .informational: return .info
+        case .low: return .low
         case .medium: return .medium
         case .high: return .high
+        case .critical: return .critical
         }
     }
 }
@@ -2224,13 +2228,23 @@ class BackgroundScanManager: ObservableObject, @unchecked Sendable {
         }
     }
     
+    private func convertAttackVectorSeverityForNetwork(_ severity: Vulnerability.Severity) -> WebScanResult.Severity {
+        switch severity {
+        case .info: return .informational
+        case .low: return .low
+        case .medium: return .medium
+        case .high: return .high
+        case .critical: return .critical
+        }
+    }
+    
     private func convertAttackVectorsToNetwork(_ vectors: [AttackVector]) -> [NetworkAttackVector] {
         return vectors.map { vector in
             NetworkAttackVector(
                 name: vector.name,
                 description: vector.description,
-                severity: NetworkAttackVector.Severity(rawValue: vector.severity.rawValue) ?? .medium,
-                tools: vector.tools,
+                severity: convertAttackVectorSeverityForNetwork(vector.severity),
+                tools: vector.requirements.map { $0.name },
                 commands: vector.commands
             )
         }

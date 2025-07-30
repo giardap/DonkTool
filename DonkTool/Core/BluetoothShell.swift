@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import IOBluetooth
 import SwiftUI
 
 // MARK: - Bluetooth Shell Framework
@@ -172,12 +173,26 @@ class BluetoothCommandProcessor: NSObject, ObservableObject {
     weak var shell: BluetoothShell?
     private let searchSploitManager = SearchSploitManager()
     
+    private var pendingExploit: String?
+    
     func processCommand(_ input: String) async {
         let parts = input.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: " ")
         guard !parts.isEmpty else { return }
         
         let command = parts[0].lowercased()
         let args = Array(parts.dropFirst())
+        
+        // Check for exploit confirmation
+        if pendingExploit != nil && command == "confirm" {
+            await executeExploit(pendingExploit!)
+            pendingExploit = nil
+            return
+        } else if pendingExploit != nil {
+            pendingExploit = nil
+            await MainActor.run {
+                shell?.addOutput("❌ Exploit cancelled", type: .info)
+            }
+        }
         
         await MainActor.run {
             switch command {
@@ -355,31 +370,259 @@ class BluetoothCommandProcessor: NSObject, ObservableObject {
     }
     
     private func handleVulnScan(_ args: [String]) {
+        guard let shell = shell else { return }
+        
         if args.isEmpty || args[0] == "all" {
-            shell?.addOutput("🛡️ Starting vulnerability scan on all devices...", type: .info)
+            shell.addOutput("🛡️ Starting comprehensive vulnerability scan on all devices...", type: .info)
+            shell.addOutput("⏳ This may take several minutes...", type: .info)
             
             Task {
-                await simulateVulnerabilityScan()
+                let devices = await shell.getDevices()
+                var totalVulnerabilities = 0
+                
+                for (address, peripheral) in devices {
+                    shell.addOutput("\n🔍 Scanning device: \(peripheral.name ?? address)", type: .info)
+                    
+                    // Convert CBPeripheral to MacOSBluetoothDevice
+                    let macOSDevice = MacOSBluetoothDevice(
+                        peripheral: peripheral,
+                        advertisementData: [:],
+                        rssi: -50,
+                        discoveryTime: Date()
+                    )
+                    
+                    // Use the real MacOSBluetoothSecurityFramework
+                    let framework = MacOSBluetoothSecurityFramework()
+                    await framework.performAdvancedSecurityAnalysis(macOSDevice)
+                    
+                    // Get vulnerabilities from the analyzer
+                    let analyzer = MacOSBluetoothSecurityAnalyzer()
+                    let vulnerabilities = await analyzer.analyzeDevice(macOSDevice)
+                    
+                    if vulnerabilities.isEmpty {
+                        shell.addOutput("  ✅ No vulnerabilities found", type: .success)
+                    } else {
+                        totalVulnerabilities += vulnerabilities.count
+                        for vuln in vulnerabilities {
+                            let severityIcon = vuln.severity == .critical ? "🔴" : 
+                                             vuln.severity == .high ? "🟠" : 
+                                             vuln.severity == .medium ? "🟡" : "🟢"
+                            
+                            shell.addOutput("  \(severityIcon) \(vuln.cveId): \(vuln.title)", type: .warning)
+                            shell.addOutput("     Severity: \(vuln.severity.rawValue.uppercased())", type: .info)
+                            shell.addOutput("     Description: \(vuln.description)", type: .info)
+                            
+                            // Check if exploit is available based on CVE
+                            if let cveId = vuln.cveId {
+                                shell.addOutput("     💥 Check for exploit: exploit \(cveId)", type: .error)
+                            }
+                        }
+                    }
+                }
+                
+                shell.addOutput("\n📊 Scan complete. Total vulnerabilities found: \(totalVulnerabilities)", type: .info)
             }
         } else {
             let address = args[0]
-            shell?.addOutput("🛡️ Starting vulnerability scan on \(address)...", type: .info)
+            guard let peripheral = shell.getDevices()[address] else {
+                shell.addOutput("❌ Device \(address) not found", type: .error)
+                shell.addOutput("💡 Use 'devices' to list available devices", type: .info)
+                return
+            }
+            
+            shell.addOutput("🛡️ Starting vulnerability scan on \(peripheral.name ?? address)...", type: .info)
             
             Task {
-                await simulateVulnerabilityScan(address: address)
+                // Convert CBPeripheral to MacOSBluetoothDevice
+                let macOSDevice = MacOSBluetoothDevice(
+                    peripheral: peripheral,
+                    advertisementData: [:],
+                    rssi: -50,
+                    discoveryTime: Date()
+                )
+                
+                let framework = MacOSBluetoothSecurityFramework()
+                await framework.performAdvancedSecurityAnalysis(macOSDevice)
+                
+                // Get vulnerabilities from the analyzer
+                let analyzer = MacOSBluetoothSecurityAnalyzer()
+                let vulnerabilities = await analyzer.analyzeDevice(macOSDevice)
+                
+                if vulnerabilities.isEmpty {
+                    shell.addOutput("✅ No vulnerabilities found for this device", type: .success)
+                } else {
+                    shell.addOutput("\n🚨 Found \(vulnerabilities.count) vulnerabilities:", type: .warning)
+                    
+                    for vuln in vulnerabilities {
+                        let severityIcon = vuln.severity == .critical ? "🔴" : 
+                                         vuln.severity == .high ? "🟠" : 
+                                         vuln.severity == .medium ? "🟡" : "🟢"
+                        
+                        shell.addOutput("\n\(severityIcon) \(vuln.cveId ?? "Unknown"): \(vuln.title)", type: .warning)
+                        shell.addOutput("  Severity: \(vuln.severity.rawValue.uppercased())", type: .info)
+                        shell.addOutput("  Description: \(vuln.description)", type: .info)
+                        shell.addOutput("  Discovered: \(vuln.discoveredAt.formatted())", type: .info)
+                        
+                        if let cveId = vuln.cveId {
+                            shell.addOutput("  💥 Check for exploit: exploit \(cveId)", type: .error)
+                            shell.addOutput("  ⚠️ Ensure you have authorization before exploiting", type: .warning)
+                        }
+                        
+                        // Add mitigation recommendations
+                        if let cveId = vuln.cveId,
+                           let mitigation = getMitigationRecommendation(for: cveId) {
+                            shell.addOutput("  💡 Mitigation: \(mitigation)", type: .info)
+                        }
+                    }
+                }
             }
         }
     }
     
+    private func getMitigationRecommendation(for cveId: String) -> String? {
+        // Common Bluetooth CVE mitigations
+        let mitigations: [String: String] = [
+            "CVE-2017-1000251": "Update BlueZ to version 5.47 or later. Disable Bluetooth if not needed.",
+            "CVE-2017-1000250": "Apply latest OS security patches. Use Bluetooth only when necessary.",
+            "CVE-2020-0022": "Update to Android 8.0 or later. Keep Bluetooth disabled when not in use.",
+            "CVE-2019-11932": "Apply WhatsApp updates. Be cautious of messages from unknown contacts.",
+            "CVE-2023-45866": "Update Bluetooth drivers and firmware. Enable only required Bluetooth services.",
+            "CVE-2018-5383": "Use Bluetooth 5.0 or later. Avoid pairing in public areas.",
+            "CVE-2019-9506": "Update device firmware. Use strong PINs for pairing."
+        ]
+        
+        return mitigations[cveId]
+    }
+    
     private func handleExploit(_ args: [String]) {
+        guard let shell = shell else { return }
         guard !args.isEmpty else {
-            shell?.addOutput("❌ Usage: exploit <vulnerability_id>", type: .error)
+            shell.addOutput("❌ Usage: exploit <vulnerability_id>", type: .error)
             return
         }
         
         let vulnId = args[0]
-        shell?.addOutput("💥 Attempting to exploit vulnerability: \(vulnId)", type: .warning)
-        shell?.addOutput("⚠️ Exploit simulation not yet implemented", type: .info)
+        
+        // Request user confirmation for exploitation
+        shell.addOutput("⚠️  WARNING: Exploit execution requested", type: .error)
+        shell.addOutput("📋 Vulnerability: \(vulnId)", type: .warning)
+        shell.addOutput("⚡ This action may have legal implications", type: .warning)
+        shell.addOutput("❓ Type 'confirm' to proceed with authorized testing only", type: .info)
+        
+        // Store pending exploit for confirmation
+        pendingExploit = vulnId
+    }
+    
+    private func executeExploit(_ vulnId: String) async {
+        guard let shell = shell else { return }
+        
+        await MainActor.run {
+            shell.addOutput("\n🚀 Executing exploit for \(vulnId)...", type: .warning)
+            shell.addOutput("⏳ Please wait...", type: .info)
+        }
+        
+        // Use UserConfirmation for additional security check
+        let confirmed = await UserConfirmation.shared.requestConfirmation(
+            title: "Execute Bluetooth Exploit",
+            message: "This will attempt to exploit vulnerability \(vulnId). Ensure you have proper authorization.",
+            requiresSudo: false,
+            isDestructive: true
+        ) {
+            // Action performed after confirmation
+        }
+        
+        guard confirmed else {
+            await MainActor.run {
+                shell.addOutput("❌ Exploit execution cancelled by user", type: .info)
+            }
+            return
+        }
+        
+        // Get exploit details from SearchSploit
+        let exploits = await searchSploitManager.searchForCVE(vulnId)
+        
+        if exploits.isEmpty {
+            await MainActor.run {
+                shell.addOutput("❌ No exploit found in database for \(vulnId)", type: .error)
+                shell.addOutput("💡 Try searching manually with: searchsploit \(vulnId)", type: .info)
+            }
+            return
+        }
+        
+        let exploit = exploits.first!
+        
+        await MainActor.run {
+            shell.addOutput("\n📋 Exploit Details:", type: .info)
+            shell.addOutput("  Title: \(exploit.title)", type: .info)
+            shell.addOutput("  Type: \(exploit.type)", type: .info)
+            shell.addOutput("  Platform: \(exploit.platform)", type: .info)
+            shell.addOutput("  Path: \(exploit.path)", type: .info)
+            
+            // Use RealBluetoothExploitEngine for actual execution
+            shell.addOutput("\n⚡ Launching exploit...", type: .warning)
+        }
+        
+        // Execute using the real exploit engine
+        if let (address, _) = shell.getDevices().first {
+            let exploitEngine = RealBluetoothExploitEngine()
+            
+            // Create a LiveCVEEntry from the exploit information
+            let cveEntry = LiveCVEEntry(
+                id: vulnId,
+                description: exploit.title,
+                severity: .high,
+                published: Date(),
+                lastModified: Date(),
+                references: [exploit.path],
+                affectedProducts: [exploit.platform],
+                exploitability: .functional,
+                attackVector: .adjacent,
+                attackComplexity: .low,
+                privilegesRequired: .none,
+                userInteraction: .none,
+                scope: .unchanged,
+                confidentialityImpact: .high,
+                integrityImpact: .high,
+                availabilityImpact: .none,
+                baseScore: 7.5,
+                exploitCode: exploit.path,
+                proofOfConcept: exploit.title
+            )
+            
+            let result = await exploitEngine.executeRealCVEExploit(cveEntry, target: address)
+            
+            await MainActor.run {
+                if result.success {
+                    shell.addOutput("✅ Exploit executed successfully!", type: .success)
+                    shell.addOutput("📊 Impact: \(result.impact)", type: .info)
+                    
+                    if result.shellAccess {
+                        shell.addOutput("🎯 Shell access obtained!", type: .success)
+                    }
+                    
+                    if result.persistentAccess {
+                        shell.addOutput("🔒 Persistent access established!", type: .success)
+                    }
+                    
+                    if !result.capturedData.isEmpty {
+                        shell.addOutput("📄 Captured data:", type: .info)
+                        for data in result.capturedData {
+                            shell.addOutput("  • \(data)", type: .info)
+                        }
+                    }
+                } else {
+                    shell.addOutput("❌ Exploit failed", type: .error)
+                    shell.addOutput("💡 Try different exploit parameters or another vulnerability", type: .info)
+                }
+                
+                shell.addOutput("\n💡 Remember to document findings for your penetration test report", type: .info)
+            }
+        } else {
+            await MainActor.run {
+                shell.addOutput("❌ No target device selected", type: .error)
+                shell.addOutput("💡 Connect to a device first using: connect <address>", type: .info)
+            }
+        }
     }
     
     private func showStatus() {

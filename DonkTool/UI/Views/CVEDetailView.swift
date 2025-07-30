@@ -12,7 +12,7 @@ struct AdvancedCVEDetailView: View {
     let cve: CVEEntry
     @StateObject private var exploitDB = ExploitDatabase.shared
     @State private var relatedExploits: [ExploitEntry] = []
-    @State private var relatedMetasploitModules: [MetasploitModule] = []
+    @State private var relatedMetasploitModules: [ExploitMetasploitModule] = []
     @State private var showingCVSSCalculator = false
     
     var body: some View {
@@ -579,7 +579,7 @@ struct ExploitRow: View {
 }
 
 struct MetasploitModuleRow: View {
-    let module: MetasploitModule
+    let module: ExploitMetasploitModule
     
     var body: some View {
         HStack {
@@ -611,16 +611,16 @@ struct MetasploitModuleRow: View {
 
 #Preview {
     AdvancedCVEDetailView(cve: CVEEntry(
-        id: "CVE-2024-1234",
-        description: "Remote code execution vulnerability in Example Software that allows attackers to execute arbitrary code with elevated privileges.",
-        cvssScore: 9.8,
+        id: "CVE-2021-44228",
+        description: "Apache Log4j2 <=2.14.1 JNDI features used in configuration, log messages, and parameters do not protect against attacker controlled LDAP and other JNDI related endpoints.",
+        cvssScore: 10.0,
         severity: .critical,
         publishedDate: Date(),
         lastModified: Date(),
-        affectedProducts: ["Example Software 1.0", "Example Software 1.1"],
+        affectedProducts: ["Apache Log4j2 2.0-beta9 through 2.15.0"],
         exploitAvailable: true,
         exploitMaturity: .functional,
-        references: ["https://example.com/advisory", "https://nvd.nist.gov/vuln/detail/CVE-2024-1234"],
-        cweId: "CWE-78"
+        references: ["https://logging.apache.org/log4j/2.x/security.html", "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"],
+        cweId: "CWE-502"
     ))
 }

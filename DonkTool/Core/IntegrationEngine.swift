@@ -229,6 +229,14 @@ class IntegrationEngine {
         lastIntegrationTime = Date()
         
         Task {
+            // Store in secure vault first
+            do {
+                try await SecureCredentialVault.shared.addCredential(from: credentials)
+                print("🔐 Integration: Stored credential securely for \(credentials.target)")
+            } catch {
+                print("🔐 Integration: Failed to store credential - \(error)")
+            }
+            
             // Test credentials against SSH services
             await testCredentialsAgainstSSH(credentials)
             

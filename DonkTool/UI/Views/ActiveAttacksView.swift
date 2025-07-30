@@ -93,7 +93,7 @@ struct ActiveAttacksView: View {
             }
             
             Button("Go to Network Scanner") {
-                appState.currentTab = .networkScanner
+                appState.currentTab = .securityScanner
             }
             .primaryButton()
             
@@ -548,8 +548,10 @@ struct FindingsSummaryView: View {
     }
 }
 
-#Preview {
-    ActiveAttacksView()
-        .environment(AppState())
-        .frame(width: 1000, height: 700)
+struct ActiveAttacksView_Previews: PreviewProvider {
+    static var previews: some View {
+        ActiveAttacksView()
+            .environment(AppState())
+            .frame(width: 1000, height: 700)
+    }
 }

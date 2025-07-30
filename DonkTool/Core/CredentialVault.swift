@@ -187,7 +187,7 @@ class CredentialVault {
         let testResults = await performComprehensiveCredentialTest(credential)
         
         // Update credential with test results
-        var updatedCredential = credential
+        let updatedCredential = credential
         var newSuccessfulServices: [String] = []
         var isVerified = false
         
