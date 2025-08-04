@@ -14,16 +14,8 @@ struct UnifiedSecurityScanner: View {
     @State private var scanTarget = ""
     @State private var selectedScanType = "comprehensive"
     @State private var selectedMode: ScanMode = .combined
-    @State private var selectedNetworkTools: Set<String> = Set([
-        "Port Scan", "Service Detection", "OS Detection", "Vulnerability Scripts", 
-        "UDP Scan", "Stealth Scan", "Version Detection", "Script Scan"
-    ])
-    @State private var selectedWebTools: Set<String> = Set([
-        "SQL Injection", "Web Vulnerability Scan", "Nuclei Template Scan",
-        "Directory Enumeration", "Advanced Directory Fuzzing", "XSS Detection",
-        "OWASP ZAP Scan", "HTTP/HTTPS Analysis", "SSL/TLS Analysis",
-        "HTTP Header Security", "Basic SSL Check", "Subdomain Enumeration"
-    ])
+    @State private var selectedNetworkTools: Set<String> = Set()
+    @State private var selectedWebTools: Set<String> = Set()
     @State private var isScanning = false
     @State private var showResults = false
     @State private var selectedTarget: Target?
@@ -33,6 +25,7 @@ struct UnifiedSecurityScanner: View {
     @State private var scanProgress: Double = 0.0
     @State private var currentScanPhase = ""
     @State private var showAdvancedOptions = false
+    @State private var portRange = "1-1000"
     
     enum ScanMode: String, CaseIterable {
         case network = "Network"
@@ -89,6 +82,7 @@ struct UnifiedSecurityScanner: View {
                 UltraModernTargetConfiguration(
                     scanTarget: $scanTarget,
                     selectedScanType: $selectedScanType,
+                    portRange: $portRange,
                     scanTypes: scanTypes,
                     isScanning: isScanning,
                     showAdvancedOptions: $showAdvancedOptions,
@@ -113,7 +107,8 @@ struct UnifiedSecurityScanner: View {
                 if isScanning {
                     UnifiedScanVisualization(
                         mode: selectedMode,
-                        target: scanTarget
+                        target: scanTarget,
+                        portRange: portRange
                     )
                     .scaleIn(delay: 0.1)
                 }
@@ -197,14 +192,14 @@ struct UnifiedSecurityScanner: View {
         Task {
             switch selectedMode {
             case .network:
-                await appState.performNetworkScan(target: scanTarget)
+                await appState.performNetworkScan(target: scanTarget, portRange: portRange)
             case .web:
                 let webTarget = scanTarget.hasPrefix("http") ? scanTarget : "https://\(scanTarget)"
                 appState.startWebScan(targetURL: webTarget, selectedTools: Array(selectedWebTools))
             case .combined:
                 // Combined scan: Network first, then Web
                 currentScanPhase = "Phase 1: Network Reconnaissance"
-                await appState.performNetworkScan(target: scanTarget)
+                await appState.performNetworkScan(target: scanTarget, portRange: portRange)
                 
                 currentScanPhase = "Phase 2: Web Application Testing"
                 let webTarget = scanTarget.hasPrefix("http") ? scanTarget : "https://\(scanTarget)"
@@ -455,6 +450,7 @@ struct UltraModernModeCard: View {
 struct UltraModernTargetConfiguration: View {
     @Binding var scanTarget: String
     @Binding var selectedScanType: String
+    @Binding var portRange: String
     let scanTypes: [(String, String, String, String)]
     let isScanning: Bool
     @Binding var showAdvancedOptions: Bool
@@ -585,6 +581,37 @@ struct UltraModernTargetConfiguration: View {
                                 }
                             )
                         }
+                    }
+                }
+                
+                // Port range input for network scanning
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Port Range")
+                        .font(Typography.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    HStack {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.appCardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.borderPrimary, lineWidth: 1)
+                                )
+                            
+                            TextField("1-1000", text: $portRange)
+                                .textFieldStyle(.plain)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .font(Typography.body)
+                        }
+                        .frame(width: 120)
+                        
+                        Text("e.g., 1-1000, 80,443, or 1-65535")
+                            .font(Typography.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
                     }
                 }
                 
@@ -1578,63 +1605,224 @@ struct UltraModernToolCard: View {
 struct UnifiedScanVisualization: View {
     let mode: UnifiedSecurityScanner.ScanMode
     let target: String
-    @State private var animationPhase = 0.0
+    var portRange: String = "1-1000"
+    @State private var radarRotation = 0.0
+    @State private var pulseScale = 1.0
+    @State private var discoveredHosts = 0
+    @State private var showPulse = false
+    @State private var portsScanned = 0
+    @State private var vulnerabilitiesFound = 0
+    @State private var scanTimer: Timer?
+    @Environment(AppState.self) private var appState
     
     var body: some View {
-        VStack(spacing: Spacing.large) {
-            // Radar-style visualization
-            ZStack {
-                // Background circles
-                ForEach(0..<4) { i in
-                    Circle()
-                        .stroke(Color.primaryAccent.opacity(0.2), lineWidth: 1)
-                        .frame(width: CGFloat(60 + i * 30))
-                }
-                
-                // Scanning beam
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: 0))
-                    path.addLine(to: CGPoint(x: 120 * cos(animationPhase), y: 120 * sin(animationPhase)))
-                }
-                .stroke(
-                    LinearGradient(
-                        colors: [.primaryAccent, .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    lineWidth: 2
-                )
-                
-                // Center target
-                Circle()
-                    .fill(Color.primaryAccent)
-                    .frame(width: 8, height: 8)
-                
-                // Mode icon
-                Image(systemName: mode.icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(.primaryAccent)
-                    .offset(y: -40)
-            }
-            .frame(width: 240, height: 240)
-            .onAppear {
-                withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                    animationPhase = .pi * 2
-                }
-            }
-            
-            // Status text
-            VStack(spacing: 4) {
+        ModernCard {
+            VStack(spacing: Spacing.large) {
                 Text("Scanning \(target)")
-                    .font(Typography.headline)
+                    .font(Typography.title2)
                     .foregroundColor(.primary)
                 
-                Text("Mode: \(mode.rawValue)")
-                    .font(Typography.caption)
+                // Radar Animation
+                ZStack {
+                    // Radar circles with pulse effect
+                    ForEach(1...3, id: \.self) { ring in
+                        Circle()
+                            .stroke(mode.gradient.opacity(0.3), lineWidth: 1)
+                            .frame(width: CGFloat(ring * 60), height: CGFloat(ring * 60))
+                            .scaleEffect(showPulse ? 1.1 : 1.0)
+                            .opacity(showPulse ? 0.5 : 1.0)
+                            .animation(
+                                .easeInOut(duration: 2)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(ring) * 0.2),
+                                value: showPulse
+                            )
+                    }
+                    
+                    // Radar sweep - reduced size for better visual
+                    Circle()
+                        .trim(from: 0, to: 0.25)
+                        .stroke(
+                            mode.gradient,
+                            style: StrokeStyle(lineWidth: 40, lineCap: .round)
+                        )
+                        .frame(width: 160, height: 160)
+                        .rotationEffect(.degrees(radarRotation))
+                    
+                    // Center dot with mode icon
+                    ZStack {
+                        Circle()
+                            .fill(mode.gradient)
+                            .frame(width: 24, height: 24)
+                            .shadow(color: Color.primaryAccent, radius: 8)
+                        
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    
+                    // Discovered hosts
+                    ForEach(0..<discoveredHosts, id: \.self) { index in
+                        Circle()
+                            .fill(Color.successGreen)
+                            .frame(width: 8, height: 8)
+                            .position(randomPosition(for: index))
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    // Vulnerability indicators
+                    ForEach(0..<vulnerabilitiesFound, id: \.self) { index in
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.warningOrange)
+                            .position(randomPosition(for: index + 10))
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(width: 200, height: 200)
+                
+                // Live Stats
+                HStack(spacing: Spacing.xLarge) {
+                    VStack {
+                        Text("\(discoveredHosts)")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundStyle(mode.gradient)
+                            .contentTransition(.numericText())
+                            .animation(.smoothSpring, value: discoveredHosts)
+                        Text("Hosts Found")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack {
+                        Text("\(portsScanned)")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundStyle(mode.gradient)
+                            .contentTransition(.numericText())
+                            .animation(.smoothSpring, value: portsScanned)
+                        Text("Ports Scanned")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack {
+                        Text("\(Int(appState.networkScanProgress * 100))%")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundStyle(mode.gradient)
+                            .contentTransition(.numericText())
+                            .animation(.smoothSpring, value: appState.networkScanProgress)
+                        Text("Progress")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // Scan mode description
+                Text(mode.description)
+                    .font(.caption)
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, Spacing.small)
+            }
+            .padding(.vertical, Spacing.xLarge)
+        }
+        .padding(.horizontal)
+        .onAppear {
+            // Start radar animation
+            withAnimation(Animation.linear(duration: 2).repeatForever(autoreverses: false)) {
+                radarRotation = 360
+            }
+            
+            // Start pulse animation
+            showPulse = true
+            
+            // Start update timer with proper state management
+            startScanTimer()
+        }
+        .onDisappear {
+            // Clean up timer to prevent memory leaks and state issues
+            stopScanTimer()
+        }
+        .onChange(of: appState.networkScanProgress) { oldValue, newValue in
+            // Update ports scanned when progress changes
+            Task { @MainActor in
+                let totalPorts = getTotalPortsFromRange()
+                let newPortsScanned = Int(Double(totalPorts) * newValue)
+                if newPortsScanned != portsScanned {
+                    withAnimation(.linear(duration: 0.3)) {
+                        portsScanned = newPortsScanned
+                    }
+                }
+                
+                // Stop timer when scan completes
+                if newValue >= 1.0 {
+                    stopScanTimer()
+                }
             }
         }
-        .standardContainer()
+    }
+    
+    private func randomPosition(for index: Int) -> CGPoint {
+        let angle = Double(index) * 72 * .pi / 180
+        let radius = Double.random(in: 40...80)
+        return CGPoint(
+            x: 100 + radius * cos(angle),
+            y: 100 + radius * sin(angle)
+        )
+    }
+    
+    private func getTotalPortsFromRange() -> Int {
+        // Parse port range string to calculate total ports
+        let trimmed = portRange.trimmingCharacters(in: .whitespaces)
+        
+        if trimmed.contains("-") {
+            // Range format: "1-1000"
+            let parts = trimmed.split(separator: "-")
+            if parts.count == 2,
+               let start = Int(parts[0]),
+               let end = Int(parts[1]) {
+                return max(0, end - start + 1)
+            }
+        } else if trimmed.contains(",") {
+            // List format: "80,443,8080"
+            let ports = trimmed.split(separator: ",")
+            return ports.count
+        } else if let singlePort = Int(trimmed) {
+            // Single port
+            return 1
+        }
+        
+        // Default to 1000 ports if parsing fails
+        return 1000
+    }
+    
+    private func startScanTimer() {
+        // Stop any existing timer
+        stopScanTimer()
+        
+        // Start new timer for host discovery and vulnerability updates
+        scanTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task { @MainActor in
+                // Simulate discovering hosts
+                if discoveredHosts < 5 && appState.networkScanProgress > 0.1 {
+                    withAnimation(.bounceSpring) {
+                        discoveredHosts += 1
+                    }
+                }
+                
+                // Randomly add vulnerabilities
+                if Int.random(in: 0...4) == 0 && vulnerabilitiesFound < 3 && appState.networkScanProgress > 0.3 {
+                    withAnimation(.bounceSpring) {
+                        vulnerabilitiesFound += 1
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopScanTimer() {
+        scanTimer?.invalidate()
+        scanTimer = nil
     }
 }
 
@@ -1671,8 +1859,15 @@ struct UnifiedResultsSection: View {
                         ], spacing: 12) {
                             ForEach(targets) { target in
                                 TargetResultCard(target: target) {
-                                    selectedTarget = target
-                                    showTargetDetails = true
+                                    // Reset state first to ensure state change
+                                    selectedTarget = nil
+                                    showTargetDetails = false
+                                    
+                                    // Small delay to ensure state is reset
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                        selectedTarget = target
+                                        showTargetDetails = true
+                                    }
                                 }
                             }
                         }

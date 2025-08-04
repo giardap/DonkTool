@@ -445,6 +445,8 @@ struct DetailView: View {
                 UltraModernPacketSniffer()
             case .bluetoothSecurity:
                 UltraModernBluetoothSecurity()
+            case .socialEngineering:
+                SocialEngineeringView()
             case .dosStressTesting:
                 ModernDoSTestingView()
             case .metasploitConsole:

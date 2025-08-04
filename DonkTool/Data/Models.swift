@@ -33,8 +33,9 @@ struct Vulnerability: Identifiable, Codable {
     var port: Int?
     var service: String?
     var discoveredAt: Date
+    var attackVectors: [AttackVector]
     
-    init(cveId: String? = nil, title: String, description: String, severity: Severity, port: Int? = nil, service: String? = nil, discoveredAt: Date = Date()) {
+    init(cveId: String? = nil, title: String, description: String, severity: Severity, port: Int? = nil, service: String? = nil, discoveredAt: Date = Date(), attackVectors: [AttackVector] = []) {
         self.id = UUID()
         self.cveId = cveId
         self.title = title
@@ -43,6 +44,7 @@ struct Vulnerability: Identifiable, Codable {
         self.port = port
         self.service = service
         self.discoveredAt = discoveredAt
+        self.attackVectors = attackVectors
     }
     
     enum Severity: String, CaseIterable, Codable {

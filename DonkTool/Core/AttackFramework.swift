@@ -2064,14 +2064,72 @@ class AttackFramework {
             return (output, findings)
         }
         
+        // Check if command starts with sudo
+        let requiresSudo = command.hasPrefix("sudo ")
+        let actualToolName = requiresSudo && components.count > 1 ? components[1] : toolName
+        let toolStartIndex = requiresSudo ? 2 : 1
+        
         // Get the tool path
-        guard let toolPath = toolDetection.getToolPath(toolName) else {
-            let errorMsg = "Error: \(toolName) not found in system PATH"
+        guard let toolPath = toolDetection.getToolPath(actualToolName) else {
+            let errorMsg = "Error: \(actualToolName) not found in system PATH"
             output.append(errorMsg)
             sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
             return (output, findings)
         }
         
+        // Handle sudo commands
+        if requiresSudo {
+            sendRealTimeOutput("$ \(command)", sessionId: session.sessionId)
+            sendRealTimeOutput("⚠️  This command requires administrator privileges", sessionId: session.sessionId)
+            sendRealTimeOutput("", sessionId: session.sessionId)
+            
+            do {
+                // Use osascript to execute with admin privileges
+                let arguments = components.count > toolStartIndex ? Array(components.dropFirst(toolStartIndex)) : []
+                let fullCommand = "\(toolPath) \(arguments.joined(separator: " "))"
+                
+                let scriptContent = """
+                do shell script "\(fullCommand)" with administrator privileges
+                """
+                
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = ["-e", scriptContent]
+                
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+                
+                try process.run()
+                
+                // Read output
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let outputStr = String(data: data, encoding: .utf8) {
+                    let lines = outputStr.components(separatedBy: .newlines)
+                    for line in lines where !line.isEmpty {
+                        output.append(line)
+                        sendRealTimeOutput(line, sessionId: session.sessionId)
+                    }
+                }
+                
+                process.waitUntilExit()
+                
+                if process.terminationStatus == 0 {
+                    sendRealTimeOutput("✓ Command executed successfully with admin privileges", sessionId: session.sessionId)
+                } else {
+                    sendRealTimeOutput("✗ Command failed or was cancelled", sessionId: session.sessionId)
+                }
+                
+                return (output, findings)
+            } catch {
+                let errorMsg = "Failed to execute with admin privileges: \(error.localizedDescription)"
+                output.append(errorMsg)
+                sendRealTimeOutput(errorMsg, sessionId: session.sessionId)
+                return (output, findings)
+            }
+        }
+        
+        // Non-sudo execution
         let process = Process()
         let pipe = Pipe()
         
@@ -2080,8 +2138,8 @@ class AttackFramework {
         process.executableURL = URL(fileURLWithPath: toolPath)
         
         // Set arguments (skip the first component which is the tool name)
-        if components.count > 1 {
-            process.arguments = Array(components.dropFirst())
+        if components.count > toolStartIndex {
+            process.arguments = Array(components.dropFirst(toolStartIndex))
         }
         
         sendRealTimeOutput("$ \(command)", sessionId: session.sessionId)

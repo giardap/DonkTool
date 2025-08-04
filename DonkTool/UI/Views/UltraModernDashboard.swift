@@ -31,6 +31,10 @@ struct UltraModernDashboard: View {
                 StatsOverviewSection()
                     .padding(.horizontal)
                 
+                // Social Engineering Section
+                SocialEngineeringStatsSection()
+                    .padding(.horizontal)
+                
                 // Activity Charts
                 ActivityChartsSection()
                     .padding(.horizontal)
@@ -140,6 +144,7 @@ struct QuickActionsSection: View {
         ("Network Scan", "network", Color.primaryAccent),
         ("Web Test", "globe", Color.tertiaryAccent),
         ("CVE Search", "magnifyingglass.circle", Color.warningOrange),
+        ("Social Engineering", "person.crop.circle.badge.exclamationmark", Color.orange),
         ("Generate Report", "doc.text", Color.secondaryAccent)
     ]
     
@@ -170,6 +175,8 @@ struct QuickActionsSection: View {
                 appState.currentTab = .securityScanner
             case "CVE Search":
                 appState.currentTab = .vulnerabilityDatabase
+            case "Social Engineering":
+                appState.currentTab = .socialEngineering
             case "Generate Report":
                 appState.currentTab = .reporting
             default:
@@ -749,6 +756,74 @@ struct ServiceStatusCard: View {
         }
         .onAppear {
             pulse = true
+        }
+    }
+}
+
+// MARK: - Social Engineering Stats Section
+struct SocialEngineeringStatsSection: View {
+    @Environment(AppState.self) private var appState
+    @State private var socialManager = SocialEngineeringManager()
+    
+    var activeCampaigns: Int {
+        socialManager.campaigns.filter { $0.status == .active }.count
+    }
+    
+    var totalTargets: Int {
+        socialManager.campaigns.flatMap { $0.targets }.count
+    }
+    
+    var phishingSuccessRate: Double {
+        let allTargets = socialManager.campaigns.flatMap { $0.targets }
+        guard !allTargets.isEmpty else { return 0 }
+        
+        let clicked = allTargets.filter { $0.linkClickedAt != nil }.count
+        return Double(clicked) / Double(allTargets.count) * 100
+    }
+    
+    var credentialsSubmitted: Int {
+        socialManager.campaigns.flatMap { $0.targets }.filter { $0.credentialsSubmittedAt != nil }.count
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.medium) {
+            SectionHeader("Social Engineering", subtitle: "Phishing campaign analytics", icon: "person.crop.circle.badge.exclamationmark")
+            
+            HStack(spacing: Spacing.medium) {
+                UltraStatCard(
+                    title: "Active Campaigns",
+                    value: "\(activeCampaigns)",
+                    icon: "envelope.badge",
+                    color: .orange,
+                    trend: activeCampaigns > 0 ? .up(activeCampaigns) : .neutral
+                )
+                
+                UltraStatCard(
+                    title: "Phishing Success Rate",
+                    value: String(format: "%.1f%%", phishingSuccessRate),
+                    icon: "shield.checkered",
+                    color: phishingSuccessRate > 30 ? .dangerRed : (phishingSuccessRate > 15 ? .warningOrange : .successGreen),
+                    trend: phishingSuccessRate > 20 ? .up(Int(phishingSuccessRate)) : .down(Int(phishingSuccessRate)),
+                    alert: phishingSuccessRate > 30
+                )
+                
+                UltraStatCard(
+                    title: "Total Targets",
+                    value: "\(totalTargets)",
+                    icon: "person.3",
+                    color: .primaryAccent,
+                    trend: totalTargets > 0 ? .up(totalTargets) : .neutral
+                )
+                
+                UltraStatCard(
+                    title: "Credentials Captured",
+                    value: "\(credentialsSubmitted)",
+                    icon: "exclamationmark.triangle.fill",
+                    color: .dangerRed,
+                    trend: credentialsSubmitted > 0 ? .up(credentialsSubmitted) : .neutral,
+                    alert: credentialsSubmitted > 0
+                )
+            }
         }
     }
 }

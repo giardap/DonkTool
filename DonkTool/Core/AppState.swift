@@ -187,6 +187,7 @@ class AppState {
     var targets: [Target] = []
     var selectedTarget: String?
     var attackFramework = AttackFramework()
+    var attackVectorEngine = AttackVectorEngine()
     
     // Integration components
     var integrationEngine = IntegrationEngine.shared
@@ -293,6 +294,21 @@ class AppState {
     var selectedVulnerability: Vulnerability?
     var currentView: AppView = .home
     
+    // MARK: - Initialization
+    init() {
+        // Initialize Bluetooth components
+        bluetoothShell = BluetoothShell()
+        bluetoothExploitEngine = RealBluetoothExploitEngine()
+        
+        // Update AttackVectorEngine with the CVE database after initialization
+        attackVectorEngine = AttackVectorEngine(cveDatabase: cveDatabase)
+        
+        // Start CVE database update in background
+        Task {
+            await liveCVEDatabase.updateCVEDatabase()
+        }
+    }
+    
     // MARK: - Computed Properties
     var count: Int {
         return cveDatabase.cves.count
@@ -304,6 +320,7 @@ class AppState {
         case securityScanner // Unified Network & Web Testing
         case packetSniffer
         case bluetoothSecurity
+        case socialEngineering
         case dosStressTesting
         case metasploitConsole
         case osintDashboard
@@ -322,6 +339,7 @@ class AppState {
             case .securityScanner: return "Security Scanner"
             case .packetSniffer: return "Packet Sniffer"
             case .bluetoothSecurity: return "Bluetooth Security"
+            case .socialEngineering: return "Social Engineering"
             case .dosStressTesting: return "DoS/Stress Testing"
             case .metasploitConsole: return "Metasploit Console"
             case .osintDashboard: return "OSINT Dashboard"
@@ -342,6 +360,7 @@ class AppState {
             case .securityScanner: return "network.badge.shield.half.filled"
             case .packetSniffer: return "point.3.connected.trianglepath.dotted"
             case .bluetoothSecurity: return "antenna.radiowaves.left.and.right"
+            case .socialEngineering: return "person.crop.circle.badge.exclamationmark"
             case .dosStressTesting: return "exclamationmark.triangle.fill"
             case .metasploitConsole: return "terminal.fill"
             case .osintDashboard: return "binoculars.fill"
@@ -362,17 +381,6 @@ class AppState {
         case vulnerabilityDetails
     }
     
-    init() {
-        // Initialize Bluetooth components
-        bluetoothShell = BluetoothShell()
-        bluetoothExploitEngine = RealBluetoothExploitEngine()
-        
-        // Start CVE database update in background
-        Task {
-            await liveCVEDatabase.updateCVEDatabase()
-        }
-    }
-    
     func addTarget(_ target: Target) {
         targets.append(target)
     }
@@ -383,7 +391,7 @@ class AppState {
     
     // MARK: - Real Network Scanning Implementation
     
-    func performNetworkScan(target: String) async {
+    func performNetworkScan(target: String, portRange: String = "1-1000") async {
         await MainActor.run {
             isNetworkScanning = true
             currentNetworkTarget = target
@@ -394,7 +402,7 @@ class AppState {
         print("🔧 Starting real network scan for target: \(target)")
         
         // Execute real network scanning tools with progress updates
-        await executeNmapPortScan(target: target)
+        await executeNmapPortScan(target: target, portRange: portRange)
         
         await MainActor.run {
             networkScanProgress = 0.4
@@ -433,7 +441,7 @@ class AppState {
     
     // MARK: - Real Nmap Integration
     
-    private func executeNmapPortScan(target: String) async {
+    private func executeNmapPortScan(target: String, portRange: String) async {
         await MainActor.run {
             toolExecutionStatus = "Running Nmap port scan..."
             networkScanProgress = 0.2
@@ -454,7 +462,7 @@ class AppState {
             process.arguments = [
                 "-sT",  // TCP connect scan (no root required)
                 "-T4",  // Aggressive timing
-                "--top-ports", "100",  // Top 100 ports for speed
+                "-p", portRange,  // Use specified port range
                 "-oX", "-",  // XML output to stdout
                 target
             ]
@@ -675,16 +683,17 @@ class AppState {
                 
                 print("🎯 Creating target: \(newTarget.name) (\(newTarget.ipAddress))")
                 
-                // Add discovered vulnerabilities
+                // Add discovered vulnerabilities with service-specific attack vectors
                 for port in scanResult.openPorts {
                     let vuln = Vulnerability(
                         cveId: nil,
-                        title: "Open Port \(port.number)",
+                        title: "Open \(port.service.isEmpty ? "Port" : port.service.capitalized) Service",
                         description: "Service \(port.service) running on port \(port.number)",
                         severity: port.isHighRisk ? .high : .medium,
                         port: port.number,
                         service: port.service,
-                        discoveredAt: Date()
+                        discoveredAt: Date(),
+                        attackVectors: [] // Will be populated by AttackVectorEngine
                     )
                     newTarget.vulnerabilities.append(vuln)
                     print("📍 Added vulnerability: \(vuln.title)")
@@ -697,6 +706,25 @@ class AppState {
                 } else {
                     targets.append(newTarget)
                     print("✅ Added new target with \(newTarget.vulnerabilities.count) vulnerabilities")
+                }
+                
+                // Generate attack vectors using the new AttackVectorEngine
+                Task {
+                    let generatedVectors = await attackVectorEngine.generateAttackVectors(for: newTarget)
+                    await MainActor.run {
+                        // Update the target with generated attack vectors
+                        if let targetIndex = targets.firstIndex(where: { $0.ipAddress == target }) {
+                            for (vulnIndex, _) in targets[targetIndex].vulnerabilities.enumerated() {
+                                // Filter attack vectors for this specific vulnerability
+                                let matchingVectors = generatedVectors.filter { vector in
+                                    targets[targetIndex].vulnerabilities[vulnIndex].port != nil &&
+                                    vector.name.localizedCaseInsensitiveContains(targets[targetIndex].vulnerabilities[vulnIndex].service ?? "")
+                                }
+                                targets[targetIndex].vulnerabilities[vulnIndex].attackVectors = matchingVectors
+                            }
+                            print("🎯 Generated \(generatedVectors.count) attack vectors for target \(targets[targetIndex].name)")
+                        }
+                    }
                 }
             }
         } else {
@@ -714,14 +742,92 @@ class AppState {
     }
     
     private func parseNmapServiceResults(target: String, xmlOutput: String) async {
-        // Similar parsing for service detection results
-        await parseNmapResults(target: target, xmlOutput: xmlOutput)
+        // Service detection results - just update existing target with enhanced service info
+        print("🔍 Parsing service detection results for target: \(target)")
+        
+        // Parse for service info but don't create duplicate targets
+        guard let xmlData = xmlOutput.data(using: .utf8) else { 
+            print("❌ Failed to convert service XML output to data")
+            return 
+        }
+        
+        let parser = XMLParser(data: xmlData)
+        let nmapParser = NmapXMLParser()
+        parser.delegate = nmapParser
+        
+        if parser.parse() {
+            let scanResult = nmapParser.results
+            print("✅ Service XML parsed successfully")
+            print("📊 Enhanced service info for \(scanResult.openPorts.count) ports")
+            
+            await MainActor.run {
+                // Only update existing target, don't create new one
+                if let existingIndex = targets.firstIndex(where: { $0.ipAddress == target }) {
+                    var existingTarget = targets[existingIndex]
+                    
+                    // Update service information for existing ports
+                    for port in scanResult.openPorts {
+                        if let vulnIndex = existingTarget.vulnerabilities.firstIndex(where: { $0.port == port.number }) {
+                            var updatedVuln = existingTarget.vulnerabilities[vulnIndex]
+                            updatedVuln.service = port.service
+                            updatedVuln.description = "Service \(port.service) running on port \(port.number)"
+                            existingTarget.vulnerabilities[vulnIndex] = updatedVuln
+                            print("🔄 Enhanced service info for port \(port.number): \(port.service)")
+                        }
+                    }
+                    
+                    targets[existingIndex] = existingTarget
+                    print("✅ Updated target with enhanced service information")
+                }
+            }
+        }
     }
     
     private func parseNmapVulnerabilityResults(target: String, xmlOutput: String) async {
-        // Parse vulnerability script results and add to existing target
-        await parseNmapResults(target: target, xmlOutput: xmlOutput)
+        // Vulnerability script results - add additional vulnerability info
+        print("🔍 Parsing vulnerability script results for target: \(target)")
+        
+        // Parse for vulnerability info but don't create duplicate targets
+        guard let xmlData = xmlOutput.data(using: .utf8) else { 
+            print("❌ Failed to convert vulnerability XML output to data")
+            return 
+        }
+        
+        let parser = XMLParser(data: xmlData)
+        let nmapParser = NmapXMLParser()
+        parser.delegate = nmapParser
+        
+        if parser.parse() {
+            let scanResult = nmapParser.results
+            print("✅ Vulnerability XML parsed successfully")
+            print("📊 Processed vulnerability scripts for \(scanResult.openPorts.count) ports")
+            
+            await MainActor.run {
+                // Only update existing target, don't create new one
+                if let existingIndex = targets.firstIndex(where: { $0.ipAddress == target }) {
+                    var existingTarget = targets[existingIndex]
+                    
+                    // Update vulnerability severity based on script results
+                    for port in scanResult.openPorts {
+                        if let vulnIndex = existingTarget.vulnerabilities.firstIndex(where: { $0.port == port.number }) {
+                            var updatedVuln = existingTarget.vulnerabilities[vulnIndex]
+                            if port.isHighRisk {
+                                updatedVuln.severity = .high
+                                print("⚠️ Port \(port.number) marked as high risk")
+                            }
+                            existingTarget.vulnerabilities[vulnIndex] = updatedVuln
+                        }
+                    }
+                    
+                    targets[existingIndex] = existingTarget
+                    print("✅ Updated target with vulnerability assessment results")
+                }
+            }
+        }
     }
+    
+    // MARK: - Service-Specific Attack Vectors
+    
     
     // Web Scan Methods
     func startWebScan(targetURL: String, selectedTools: [String] = []) {

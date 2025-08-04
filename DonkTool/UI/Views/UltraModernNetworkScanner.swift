@@ -518,8 +518,15 @@ struct DiscoveredTargetsSection: View {
                 LazyVStack(spacing: Spacing.small) {
                     ForEach(targets) { target in
                         TargetCard(target: target) {
-                            selectedTarget = target
-                            showTargetDetails = true
+                            // Reset state first to ensure state change
+                            selectedTarget = nil
+                            showTargetDetails = false
+                            
+                            // Small delay to ensure state is reset
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                selectedTarget = target
+                                showTargetDetails = true
+                            }
                         }
                         .transition(.asymmetric(
                             insertion: .slide.combined(with: .opacity),
@@ -1287,8 +1294,15 @@ struct AttackOptionsSection: View {
             references: []
         )
         
-        selectedAttack = attack
-        showingAttackConfig = true
+        // Reset state first to ensure state change
+        selectedAttack = nil
+        showingAttackConfig = false
+        
+        // Small delay to ensure state is reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            selectedAttack = attack
+            showingAttackConfig = true
+        }
     }
     
     private func generateCommands(for attackType: String) -> [String] {

@@ -922,7 +922,13 @@ struct PortResultRowView: View {
         }
         .onTapGesture {
             if result.isOpen {
-                isShowingDetail = true
+                // Reset state first to ensure state change
+                isShowingDetail = false
+                
+                // Small delay to ensure state is reset
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isShowingDetail = true
+                }
             }
         }
         .sheet(isPresented: $isShowingDetail) {
@@ -1054,7 +1060,15 @@ struct AttackVectorRowView: View {
                         }
                     }
                     
-                    Button(action: { showingAttackExecution = true }) {
+                    Button(action: { 
+                        // Reset state first to ensure state change
+                        showingAttackExecution = false
+                        
+                        // Small delay to ensure state is reset
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            showingAttackExecution = true
+                        }
+                    }) {
                         HStack {
                             Image(systemName: "play.fill")
                             Text("Execute Attack")

@@ -31,7 +31,7 @@ struct OSINTSearchRequest: Codable {
 // MARK: - Comprehensive Profile Models
 
 struct OSINTProfile: Identifiable, Codable {
-    let id = UUID()
+    let id: UUID
     let primaryIdentifier: String
     let profileType: ProfileType
     var confidence: Double // 0.0 to 1.0
@@ -50,12 +50,48 @@ struct OSINTProfile: Identifiable, Codable {
     // Data Sources and Correlation
     var dataSources: [DataSource]
     var correlatedFindings: [CorrelatedFinding]
-    var riskAssessment: RiskAssessment
+    var riskAssessment: OSINTRiskAssessment
     
     enum ProfileType: String, CaseIterable, Codable {
         case individual = "Individual"
         case business = "Business"
         case unknown = "Unknown"
+    }
+    
+    init(
+        id: UUID = UUID(),
+        primaryIdentifier: String,
+        profileType: ProfileType,
+        confidence: Double = 0.0,
+        lastUpdated: Date = Date(),
+        personalInfo: PersonalInformation? = nil,
+        contactInfo: ContactInformation? = nil,
+        locationInfo: LocationInformation? = nil,
+        socialProfiles: [SocialMediaProfile] = [],
+        professionalInfo: ProfessionalInformation? = nil,
+        digitalFootprint: DigitalFootprint? = nil,
+        relatives: [RelativeInformation] = [],
+        associates: [AssociateInformation] = [],
+        dataSources: [DataSource] = [],
+        correlatedFindings: [CorrelatedFinding] = [],
+        riskAssessment: OSINTRiskAssessment
+    ) {
+        self.id = id
+        self.primaryIdentifier = primaryIdentifier
+        self.profileType = profileType
+        self.confidence = confidence
+        self.lastUpdated = lastUpdated
+        self.personalInfo = personalInfo
+        self.contactInfo = contactInfo
+        self.locationInfo = locationInfo
+        self.socialProfiles = socialProfiles
+        self.professionalInfo = professionalInfo
+        self.digitalFootprint = digitalFootprint
+        self.relatives = relatives
+        self.associates = associates
+        self.dataSources = dataSources
+        self.correlatedFindings = correlatedFindings
+        self.riskAssessment = riskAssessment
     }
 }
 
@@ -87,7 +123,7 @@ struct LocationInformation: Codable {
 }
 
 struct SocialMediaProfile: Identifiable, Codable {
-    let id = UUID()
+    let id: UUID
     let platform: String
     let username: String
     let profileURL: String
@@ -101,6 +137,38 @@ struct SocialMediaProfile: Identifiable, Codable {
     let lastActivity: String?
     let connections: [String]
     let interests: [String]
+    
+    init(
+        id: UUID = UUID(),
+        platform: String,
+        username: String,
+        profileURL: String,
+        isVerified: Bool = false,
+        followers: Int? = nil,
+        following: Int? = nil,
+        posts: Int? = nil,
+        bio: String? = nil,
+        profileImage: String? = nil,
+        joinDate: String? = nil,
+        lastActivity: String? = nil,
+        connections: [String] = [],
+        interests: [String] = []
+    ) {
+        self.id = id
+        self.platform = platform
+        self.username = username
+        self.profileURL = profileURL
+        self.isVerified = isVerified
+        self.followers = followers
+        self.following = following
+        self.posts = posts
+        self.bio = bio
+        self.profileImage = profileImage
+        self.joinDate = joinDate
+        self.lastActivity = lastActivity
+        self.connections = connections
+        self.interests = interests
+    }
 }
 
 struct ProfessionalInformation: Codable {
@@ -310,7 +378,7 @@ struct DataSource: Identifiable, Codable {
     let accessMethod: String
 }
 
-struct RiskAssessment: Codable {
+struct OSINTRiskAssessment: Codable {
     let overallRisk: RiskLevel
     let privacyRisk: RiskLevel
     let exposureLevel: RiskLevel
